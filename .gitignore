@@ -1,0 +1,11 @@
+node_modules/
+.next/
+venv/
+.venv/
+__pycache__/
+*.log
+backend/scratch/temp_clone/
+.env
+backend/.env
+frontend/.env
+.pytest_cache/
