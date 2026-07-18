@@ -272,9 +272,9 @@ class VerificationOrchestrator:
                     try:
                         from app.services.llm_client import get_llm_client
                         llm_client = get_llm_client()
-                        draft_answer = await llm_client.chat_complete(
-                            prompt=prompt,
-                            system_prompt=system_prompt
+                        draft_answer = await llm_client.complete(
+                            system_prompt=system_prompt,
+                            user_prompt=prompt
                         )
                         answer = draft_answer.strip()
                     except Exception as e:
