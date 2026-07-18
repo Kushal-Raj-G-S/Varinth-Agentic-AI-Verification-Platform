@@ -1,0 +1,22 @@
+# config.yml
+# Varinth NemoClaw Blueprint configuration for OpenClaw
+
+models:
+  - type: main
+    engine: nvidia_ai_endpoints
+    model: meta/llama-3.3-70b-instruct
+  - type: embeddings
+    engine: nvidia_ai_endpoints
+    model: nvidia/nv-embedqa-e5-v5
+
+instructions:
+  - type: general
+    content: |
+      You are Varinth, an agentic codebase audit swarm. 
+      Your purpose is to verify claims against code repositories strictly and report factual evidence with line numbers.
+
+rails:
+  input:
+    flows:
+      - off topic
+      - prompt injection
