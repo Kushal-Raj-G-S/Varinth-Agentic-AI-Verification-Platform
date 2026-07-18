@@ -301,7 +301,8 @@ export default function IntegrationHubPage() {
         borderBottom: '1px solid rgba(255,100,60,0.07)',
         background: 'rgba(7,2,10,0.85)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
       }}>
-        <Link href="/" style={{ textDecoration: 'none' }}>
+        <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src="/logo.png" alt="Varinth Logo" style={{ width: 34, height: 34, objectFit: 'contain' }} />
           <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.05em', color: '#f9f5ff' }}>
             Varinth<span style={{ color: 'rgba(255,130,90,0.28)' }}>.engine</span>
           </span>
