@@ -191,6 +191,10 @@ class EvidenceRetriever:
         if not candidates:
             return []
 
+        # Sort candidates by keyword density score descending before re-ranking
+        # to prevent file-system traversal/alphabetical order from bias-slicing candidates
+        candidates.sort(key=lambda c: c.relevance_score, reverse=True)
+
         # Stage 2: Semantic re-ranking (attempt; fallback to keyword score)
         candidates = await self._semantic_rerank(claim_text, candidates)
 
