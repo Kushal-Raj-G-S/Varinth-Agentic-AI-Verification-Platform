@@ -18,8 +18,9 @@ class VerifierAgent(BaseAgent):
             "and determine for EACH evidence snippet whether it explicitly supports or contradicts the claim.\n\n"
             "Rules for evaluation:\n"
             "1. An evidence snippet SUPPORTS the claim if it clearly proves the claim to be true (e.g. contains the exact configuration, code paths, or behavior mentioned).\n"
-            "2. An evidence snippet CONTRADICTS the claim if it proves the claim is false (e.g. claim says 'uses sqlite' but snippet shows database setup for postgres).\n"
-            "3. If a snippet is unrelated or neutral, both supports_claim and contradicts_claim must be false.\n\n"
+            "2. An evidence snippet CONTRADICTS the claim if it explicitly proves the claim is false (e.g. claim says 'uses sqlite' but snippet shows database setup for postgres).\n"
+            "3. If a snippet is unrelated, neutral, or lacks relevant context, BOTH supports_claim and contradicts_claim MUST be false. Do not infer support or contradiction from unrelated code.\n"
+            "4. STRICTOR GROUNDING FOR NEGATIVE CLAIMS: If the claim asserts that something does NOT exist or is NOT done, a snippet is neutral (both flags false) unless the snippet explicitly shows that the feature IS present (which contradicts the claim) or explicitly proves its exclusion (which supports the claim). Never mark a snippet as contradicting a negative claim just because the snippet is unrelated or lacks references to it.\n\n"
             "You must return a JSON object with a single key 'verdict_map', which is a list of objects matching the requested schema."
         )
 
