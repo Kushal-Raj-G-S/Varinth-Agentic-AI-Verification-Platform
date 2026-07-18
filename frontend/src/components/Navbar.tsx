@@ -40,7 +40,7 @@ export default function Navbar({ email }: { email?: string }) {
         color: 'var(--text-1)',
         textDecoration: 'none',
       }}>
-        <img src="/logo.png" alt="Varinth Logo" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+        <img src="/logo.png" alt="Varinth Logo" style={{ width: 34, height: 34, objectFit: 'contain' }} />
         <span>Varinth<span style={{ color: 'var(--text-3)' }}>.engine</span></span>
       </Link>
 

@@ -1167,9 +1167,19 @@ export default function LandingPage() {
             borderBottom: '1px solid rgba(255,100,60,0.07)',
             background: 'rgba(13,5,16,0.6)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
           }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '-0.05em', color: '#f9f5ff' }}>
-              Varinth<span style={{ color: 'rgba(255,130,90,0.28)' }}>.engine</span>
-            </span>
+            <Link href="/" style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              fontFamily: 'var(--font-display)',
+              fontSize: '1.4rem',
+              letterSpacing: '-0.05em',
+              color: '#f9f5ff',
+              textDecoration: 'none'
+            }}>
+              <img src="/logo.png" alt="Varinth Logo" style={{ width: 34, height: 34, objectFit: 'contain' }} />
+              <span>Varinth<span style={{ color: 'rgba(255,130,90,0.28)' }}>.engine</span></span>
+            </Link>
 
             {/* Center Links */}
             <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>

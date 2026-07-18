@@ -165,7 +165,7 @@ export default function LoginPage() {
         fontFamily: 'var(--font-display)', fontSize: '1.2rem',
         letterSpacing: '-0.05em', color: '#f9f5ff', textDecoration: 'none',
       }}>
-        <img src="/logo.png" alt="Varinth Logo" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+        <img src="/logo.png" alt="Varinth Logo" style={{ width: 32, height: 32, objectFit: 'contain' }} />
         <span>Varinth<span style={{ color: 'rgba(255,130,90,0.3)' }}>.engine</span></span>
       </Link>
 
