@@ -6,7 +6,7 @@ No LLM in the verdict loop — verdicts are deterministic and auditable.
 
 Verdict rules:
   supported    — at least 1 evidence item with relevance_score >= 0.5
-                 AND supports_claim is not explicitly False
+                 AND supports_claim is True
   contradicted — at least 1 evidence item with relevance_score >= 0.3
                  AND contradicts_claim is True
   unverified   — all other cases (no evidence, or evidence too weak)
@@ -93,7 +93,7 @@ class VerdictEngine:
         supporting = [
             ev for ev in evidence
             if ev.get("relevance_score", 0) >= SUPPORT_THRESHOLD
-            and ev.get("contradicts_claim") is not True
+            and ev.get("supports_claim") is True
         ]
 
         # Find contradicting evidence

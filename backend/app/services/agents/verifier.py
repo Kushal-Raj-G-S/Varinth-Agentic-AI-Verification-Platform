@@ -1,5 +1,6 @@
 from typing import Any, Dict, List
 from app.services.agents.base import BaseAgent
+from app.services.agents.schemas import VerifierOutput
 
 class VerifierAgent(BaseAgent):
     """
@@ -19,11 +20,7 @@ class VerifierAgent(BaseAgent):
             "1. An evidence snippet SUPPORTS the claim if it clearly proves the claim to be true (e.g. contains the exact configuration, code paths, or behavior mentioned).\n"
             "2. An evidence snippet CONTRADICTS the claim if it proves the claim is false (e.g. claim says 'uses sqlite' but snippet shows database setup for postgres).\n"
             "3. If a snippet is unrelated or neutral, both supports_claim and contradicts_claim must be false.\n\n"
-            "You must return a JSON object with a single key 'verdict_map', which is a list of objects. "
-            "Each object must have the fields:\n"
-            "- 'evidence_index': integer (0-indexed position of the evidence snippet)\n"
-            "- 'supports_claim': boolean\n"
-            "- 'contradicts_claim': boolean"
+            "You must return a JSON object with a single key 'verdict_map', which is a list of objects matching the requested schema."
         )
 
     def get_user_prompt(self, claim_text: str, snippets: List[str], critic_feedback: str, **kwargs: Any) -> str:
@@ -55,12 +52,13 @@ class VerifierAgent(BaseAgent):
         user = self.get_user_prompt(claim_text, snippets, critic_feedback)
         
         try:
-            res = await self.client.complete_json(
+            res: VerifierOutput = await self.client.complete_json_validated(
                 system_prompt=system,
                 user_prompt=user,
+                response_model=VerifierOutput,
                 temperature=0.0,
             )
-            return res.get("verdict_map", [])
+            return [item.model_dump() for item in res.verdict_map]
         except Exception as exc:
             self.logger.error("verifier_completion_failed", error=str(exc))
             # Safe default fallback: mark all as None/False

@@ -1,11 +1,106 @@
+# ==============================================================================
+# VARINTH: GLOBAL GITIGNORE
+# ==============================================================================
+
+# OS Metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Node / Next.js / Frontend
 node_modules/
+/frontend/node_modules/
 .next/
+/frontend/.next/
+out/
+/frontend/out/
+build/
+dist/
+.pnp
+.pnp.js
+.pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+npm-debug.log*
+
+# Python / Backend
 venv/
 .venv/
+env/
+ENV/
+/backend/venv/
+/backend/.venv/
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testing and Coverage
+.pytest_cache/
+/backend/.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
 *.log
-backend/scratch/temp_clone/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Varinth Swarm Temp Clones & Local Cache
+backend/scratch/
+backend/temp_clone/
+temp_clone/
+/backend/app/temp_clone/
+/backend/app/scratch/
+
+# Environmental Configurations & Secrets
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 backend/.env
 frontend/.env
-.pytest_cache/
+*.pem
+*.key

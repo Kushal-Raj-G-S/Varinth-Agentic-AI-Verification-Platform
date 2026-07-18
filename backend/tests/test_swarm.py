@@ -4,36 +4,40 @@ from app.services.agents.critic import CriticAgent
 from app.services.agents.verifier import VerifierAgent
 from app.services.agents.judge import JudgeAgent
 from app.services.agents.swarm_orchestrator import SwarmOrchestrator
+from app.services.agents.schemas import CriticOutput, VerifierOutput, EvidenceVerdict, JudgeOutput
 
 @pytest.mark.asyncio
 async def test_critic_agent():
     critic = CriticAgent()
     
-    with patch.object(critic.client, "complete", new_callable=AsyncMock) as mock_complete:
-        mock_complete.return_value = "Criticism: The snippet is from a test file, not source."
+    with patch.object(critic.client, "complete_json_validated", new_callable=AsyncMock) as mock_complete:
+        mock_complete.return_value = CriticOutput(
+            criticisms=["The snippet is from a test file, not source."],
+            has_discrepancies=True
+        )
         
         feedback = await critic.critique(
             claim_text="Uses a security guard",
             snippets=["def test_guard(): pass"]
         )
         
-        assert "Criticism:" in feedback
+        assert "The snippet is from a test file" in feedback
         mock_complete.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_verifier_agent():
     verifier = VerifierAgent()
     
-    with patch.object(verifier.client, "complete_json", new_callable=AsyncMock) as mock_complete_json:
-        mock_complete_json.return_value = {
-            "verdict_map": [
-                {
-                    "evidence_index": 0,
-                    "supports_claim": True,
-                    "contradicts_claim": False
-                }
+    with patch.object(verifier.client, "complete_json_validated", new_callable=AsyncMock) as mock_complete_json:
+        mock_complete_json.return_value = VerifierOutput(
+            verdict_map=[
+                EvidenceVerdict(
+                    evidence_index=0,
+                    supports_claim=True,
+                    contradicts_claim=False
+                )
             ]
-        }
+        )
         
         results = await verifier.verify(
             claim_text="Uses assert_path_in_scope",
@@ -50,8 +54,8 @@ async def test_judge_agent():
     judge = JudgeAgent()
     
     # 1. Test LLM completion
-    with patch.object(judge.client, "complete_json", new_callable=AsyncMock) as mock_complete_json:
-        mock_complete_json.return_value = {"explanation": "Matches the codebase exactly."}
+    with patch.object(judge.client, "complete_json_validated", new_callable=AsyncMock) as mock_complete_json:
+        mock_complete_json.return_value = JudgeOutput(explanation="Matches the codebase exactly.")
         
         explanation = await judge.explain_verdict(
             claim_text="Uses PostgreSQL",
@@ -62,7 +66,7 @@ async def test_judge_agent():
         assert explanation == "Matches the codebase exactly."
     
     # 2. Test template fallback by forcing an LLM error
-    with patch.object(judge.client, "complete_json", new_callable=AsyncMock) as mock_complete_json:
+    with patch.object(judge.client, "complete_json_validated", new_callable=AsyncMock) as mock_complete_json:
         mock_complete_json.side_effect = Exception("LLM connection timed out")
         
         explanation_fallback = await judge.explain_verdict(
@@ -76,27 +80,25 @@ async def test_judge_agent():
 async def test_swarm_orchestrator():
     orchestrator = SwarmOrchestrator()
     
-    # Mock both complete and complete_json calls
-    with patch.object(orchestrator.critic.client, "complete", new_callable=AsyncMock) as mock_complete, \
-         patch.object(orchestrator.verifier.client, "complete_json", new_callable=AsyncMock) as mock_complete_json:
-        
-        mock_complete.return_value = "No discrepancies found."
-        mock_complete_json.side_effect = [
-            # First call for VerifierAgent
-            {
-                "verdict_map": [
-                    {
-                        "evidence_index": 0,
-                        "supports_claim": True,
-                        "contradicts_claim": False
-                    }
+    def side_effect_fn(system_prompt, user_prompt, response_model, **kwargs):
+        if response_model == CriticOutput:
+            return CriticOutput(criticisms=[], has_discrepancies=False)
+        elif response_model == VerifierOutput:
+            return VerifierOutput(
+                verdict_map=[
+                    EvidenceVerdict(
+                        evidence_index=0,
+                        supports_claim=True,
+                        contradicts_claim=False
+                    )
                 ]
-            },
-            # Second call for JudgeAgent
-            {
-                "explanation": "Claim is fully supported."
-            }
-        ]
+            )
+        elif response_model == JudgeOutput:
+            return JudgeOutput(explanation="Claim is fully supported.")
+        raise ValueError(f"Unknown mock type: {response_model}")
+
+    with patch.object(orchestrator.critic.client, "complete_json_validated", new_callable=AsyncMock) as mock_validated:
+        mock_validated.side_effect = side_effect_fn
         
         claims = [{"claim_index": 1, "raw_text": "Claim", "normalized_text": "Claim", "importance": "high"}]
         evidence_map = {

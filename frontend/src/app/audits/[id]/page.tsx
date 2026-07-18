@@ -22,6 +22,57 @@ import {
   MOCK_EMPTY_PAYLOAD,
 } from '@/mocks/auditPayload';
 
+// ─────────────────────────────────────────────────────────────
+// INTERACTIVE GLOW CARD
+// ─────────────────────────────────────────────────────────────
+function HoverGlowCard({ children, style = {}, accent = '#ff6b45', ...props }: any) {
+  const [coords, setCoords] = useState({ x: 0, y: 0 })
+  const [isHovered, setIsHovered] = useState(false)
+  const boundsRef = useRef<HTMLDivElement>(null)
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (boundsRef.current) {
+      const bounds = boundsRef.current.getBoundingClientRect()
+      setCoords({
+        x: e.clientX - bounds.left,
+        y: e.clientY - bounds.top
+      })
+    }
+  }
+
+  return (
+    <div
+      ref={boundsRef}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        ...style,
+        position: 'relative',
+        overflow: 'hidden',
+        transition: 'border-color 0.3s, box-shadow 0.3s',
+      }}
+      {...props}
+    >
+      {isHovered && (
+        <div style={{
+          position: 'absolute',
+          left: coords.x - 200,
+          top: coords.y - 200,
+          width: 400,
+          height: 400,
+          background: `radial-gradient(circle, ${accent}15 0%, transparent 65%)`,
+          pointerEvents: 'none',
+          zIndex: 1,
+        }} />
+      )}
+      <div style={{ position: 'relative', zIndex: 2, width: '100%', height: '100%' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export default function AuditDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -258,10 +309,19 @@ export default function AuditDetailsPage() {
   const activeColor = statusColors[audit.status as keyof typeof statusColors] || { text: '#c8a896', bg: 'rgba(200, 168, 150, 0.07)', border: 'rgba(200, 168, 150, 0.2)' };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100" style={{ fontFamily: 'var(--font-body)' }}>
+    <div style={{ background: '#0d0510', color: '#f9f5ff', minHeight: '100vh', fontFamily: 'var(--font-body)', position: 'relative', overflowX: 'hidden' }}>
+      
+      {/* Background radial atmosphere */}
+      <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 1400, height: 800, background: 'radial-gradient(ellipse 60% 40% at 50% 0%, rgba(157,107,255,0.06) 0%, transparent 80%)', pointerEvents: 'none', zIndex: 0 }} />
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
+        backgroundImage: 'radial-gradient(rgba(157,107,255,0.03) 1px, transparent 1px)',
+        backgroundSize: '24px 24px'
+      }} />
+
       <Navbar email={email} />
       
-      <main style={{ maxWidth: 'var(--max-w)', margin: '0 auto', padding: '32px var(--s8)' }}>
+      <main style={{ maxWidth: 'var(--max-w)', margin: '0 auto', padding: '32px var(--s8)', position: 'relative', zIndex: 1 }}>
         
         {/* ── Breadcrumbs ── */}
         <nav style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: 20 }}>
@@ -380,34 +440,34 @@ export default function AuditDetailsPage() {
               marginBottom: 32
             }}>
               {/* Box 1: Trust Score */}
-              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 20px' }}>
+              <HoverGlowCard accent={scoreColor} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 20px', background: 'rgba(19,12,28,0.3)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 10 }}>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                   Trust Score
                 </span>
                 <span style={{ fontSize: '1.5rem', fontWeight: 700, color: scoreColor, fontFamily: 'var(--font-mono)' }}>
                   {score !== null ? `${score}%` : 'N/A'}
                 </span>
-              </div>
+              </HoverGlowCard>
               {/* Box 2: Claims Audited */}
-              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 20px' }}>
+              <HoverGlowCard accent="var(--coral)" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 20px', background: 'rgba(19,12,28,0.3)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 10 }}>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                   Assertions Checked
                 </span>
                 <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-1)', fontFamily: 'var(--font-mono)' }}>
                   {audit.claims.length}
                 </span>
-              </div>
+              </HoverGlowCard>
               {/* Box 3: Execution Time */}
-              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 20px' }}>
+              <HoverGlowCard accent="var(--violet)" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 20px', background: 'rgba(19,12,28,0.3)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 10 }}>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                   Verification Time
                 </span>
                 <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>
                   {durationSec ? `${durationSec}s` : '--'}
                 </span>
-              </div>
+              </HoverGlowCard>
               {/* Box 4: Verdict Breakdown */}
-              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 20px' }}>
+              <HoverGlowCard accent="var(--teal)" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 20px', background: 'rgba(19,12,28,0.3)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 10 }}>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                   Verdict Breakdown
                 </span>
@@ -416,7 +476,7 @@ export default function AuditDetailsPage() {
                   <span style={{ color: 'var(--crimson)' }}>{counts.contradicted} contradicted</span>
                   <span style={{ color: 'var(--text-3)' }}>{counts.unverified} unverified</span>
                 </span>
-              </div>
+              </HoverGlowCard>
             </div>
 
             {/* ── Input context preview ── */}
@@ -521,6 +581,67 @@ export default function AuditDetailsPage() {
                                 {claim.judge_explanation || 'No natural language explanation was generated.'}
                               </p>
                             </div>
+
+                            {/* Critic Agent Discrepancy Analysis */}
+                            {claim.rule_trace?.critic_feedback && claim.rule_trace.critic_feedback.toLowerCase() !== 'none' && (
+                              <div style={{
+                                background: 'rgba(255, 107, 69, 0.04)',
+                                borderLeft: '3px solid var(--coral)',
+                                padding: 12,
+                                borderRadius: '0 var(--r-sm) var(--r-sm) 0',
+                                fontSize: '0.8rem',
+                                color: 'var(--text-2)',
+                                lineHeight: 1.5,
+                              }}>
+                                <strong style={{ color: 'var(--coral)', textTransform: 'uppercase', fontSize: '0.65rem', display: 'block', marginBottom: 4 }}>
+                                  Critic Agent Discrepancy Analysis
+                                </strong>
+                                {claim.rule_trace.critic_feedback}
+                              </div>
+                            )}
+
+                            {/* Suggested Grounded Correction */}
+                            {claim.rule_trace?.suggested_correction && (
+                              <div className="correction-box" style={{
+                                background: 'rgba(255, 179, 0, 0.08)',
+                                border: '1px solid rgba(255, 179, 0, 0.25)',
+                                borderRadius: '6px',
+                                padding: '12px',
+                              }}>
+                                <span style={{
+                                  fontSize: '0.72rem',
+                                  color: '#f59e0b',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  fontWeight: 600,
+                                  marginBottom: '4px',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.04em'
+                                }}>
+                                  💡 Suggested Grounded Correction ({claim.rule_trace.suggested_correction.confidence} confidence)
+                                </span>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-1)', marginBottom: '8px', lineHeight: 1.4, margin: 0 }}>
+                                  {claim.rule_trace.suggested_correction.statement}
+                                </p>
+                                {claim.rule_trace.suggested_correction.file_references && claim.rule_trace.suggested_correction.file_references.length > 0 && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>References:</span>
+                                    {claim.rule_trace.suggested_correction.file_references.map((ref, idx) => (
+                                      <span key={idx} className="mono" style={{
+                                        fontSize: '0.7rem',
+                                        background: 'rgba(255, 255, 255, 0.05)',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        color: 'var(--text-2)'
+                                      }}>
+                                        {ref}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Contradiction callout detail */}
                             {claim.verdict === 'contradicted' && claim.contradiction_reason && (

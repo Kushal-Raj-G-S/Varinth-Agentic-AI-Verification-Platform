@@ -50,6 +50,7 @@ from mcp.types import (
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.security import SecurityViolationError, assert_path_in_scope
+from app.core.database import get_supabase
 from app.services.orchestrator import VerificationOrchestrator
 
 configure_logging()
@@ -222,15 +223,27 @@ async def _handle_verify(args: dict) -> CallToolResult:
                     f"within root_path '{root_path}'."
                 )
 
+        # Resolve active user_id from env or query database profiles
+        user_id = os.getenv("VARINTH_DEFAULT_USER_ID")
+        if not user_id:
+            try:
+                db = get_supabase()
+                profile_res = db.table("profiles").select("id").limit(1).execute()
+                if profile_res.data:
+                    user_id = profile_res.data[0]["id"]
+            except Exception as exc:
+                logger.warning("mcp_failed_to_resolve_user_id", error=str(exc))
+
         logger.info(
             "mcp_verify_request",
             root_path=root_path,
             max_claims=max_claims,
+            user_id=user_id,
         )
 
         orchestrator = VerificationOrchestrator()
         result = await orchestrator.run(
-            user_id=None,   # MCP runs locally, no auth user
+            user_id=user_id,
             question=question,
             answer=answer,
             root_path=root_path,
@@ -269,13 +282,24 @@ async def _handle_compare(args: dict) -> CallToolResult:
         if not os.path.isdir(root_path):
             return _error_result(f"root_path '{root_path}' is not a valid directory.")
 
-        logger.info("mcp_compare_request", root_path=root_path)
+        # Resolve active user_id from env or query database profiles
+        user_id = os.getenv("VARINTH_DEFAULT_USER_ID")
+        if not user_id:
+            try:
+                db = get_supabase()
+                profile_res = db.table("profiles").select("id").limit(1).execute()
+                if profile_res.data:
+                    user_id = profile_res.data[0]["id"]
+            except Exception as exc:
+                logger.warning("mcp_failed_to_resolve_user_id", error=str(exc))
+
+        logger.info("mcp_compare_request", root_path=root_path, user_id=user_id)
 
         orchestrator = VerificationOrchestrator()
 
         result_a, result_b = await asyncio.gather(
             orchestrator.run(
-                user_id=None,
+                user_id=user_id,
                 question=question,
                 answer=answer_a,
                 root_path=root_path,
@@ -285,7 +309,7 @@ async def _handle_compare(args: dict) -> CallToolResult:
                 transport_type="stdio",
             ),
             orchestrator.run(
-                user_id=None,
+                user_id=user_id,
                 question=question,
                 answer=answer_b,
                 root_path=root_path,

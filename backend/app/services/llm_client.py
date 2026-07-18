@@ -16,6 +16,7 @@ import time
 import threading
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
 import httpx
 
 from app.core.config import get_settings
@@ -177,6 +178,69 @@ class LLMClient:
                 f"LLM returned non-JSON output. "
                 f"Raw (first 500 chars): {raw[:500]}"
             ) from exc
+
+    async def complete_json_validated(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: type[BaseModel],
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        repair_attempts: int = 1,
+    ) -> BaseModel:
+        """
+        Same as complete_json() but validates output against a Pydantic model.
+        If validation fails, it performs a self-repair loop by resubmitting the
+        validation error stack trace to the LLM to get a corrected schema format.
+        """
+        schema_json = json.dumps(response_model.model_json_schema(), indent=2)
+        validation_system_prompt = (
+            f"{system_prompt}\n\n"
+            f"You MUST respond ONLY with a raw JSON object matching this schema:\n"
+            f"{schema_json}\n"
+            "Do not include any conversational text before or after the JSON."
+        )
+
+        current_user_prompt = user_prompt
+
+        for attempt in range(repair_attempts + 1):
+            try:
+                raw_json_dict = await self.complete_json(
+                    system_prompt=validation_system_prompt,
+                    user_prompt=current_user_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+
+                validated_model = response_model.model_validate(raw_json_dict)
+                return validated_model
+
+            except (ValueError, ValidationError) as exc:
+                if attempt >= repair_attempts:
+                    logger.error(
+                        "validation_repair_failed_max_attempts",
+                        model=response_model.__name__,
+                        error=str(exc),
+                    )
+                    raise
+
+                error_trace = str(exc)
+                logger.warning(
+                    "validation_failed_initiating_repair",
+                    model=response_model.__name__,
+                    error=error_trace,
+                    attempt=attempt + 1,
+                )
+                
+                current_user_prompt = (
+                    f"{user_prompt}\n\n"
+                    f"--- REPAIR REQUEST ---\n"
+                    f"Your previous JSON output failed validation with the following error:\n"
+                    f"{error_trace}\n\n"
+                    f"Please output a corrected, valid JSON matching the schema precisely."
+                )
+
+        raise ValueError("JSON validation repair loop failed to return a validated model.")
 
     async def embed(self, text: str) -> list[float]:
         """

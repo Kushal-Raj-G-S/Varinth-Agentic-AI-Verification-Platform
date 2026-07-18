@@ -1,5 +1,6 @@
 from typing import Any
 from app.services.agents.base import BaseAgent
+from app.services.agents.schemas import CriticOutput
 
 class CriticAgent(BaseAgent):
     """
@@ -19,8 +20,7 @@ class CriticAgent(BaseAgent):
             "- Do the snippets show the exact feature, method, or config option mentioned, or is it just topical similarity?\n"
             "- Are there naming collisions or false positives (e.g. matching a helper or class in a different scope)?\n"
             "- Is the evidence insufficient to verify the claim?\n\n"
-            "Format your analysis as a clear, concise bulleted list of criticisms or challenges. "
-            "Be objective. If the evidence matches perfectly and there are no discrepancies, state 'None'."
+            "Format your output strictly as a JSON object matching the requested schema."
         )
 
     def get_user_prompt(self, claim_text: str, snippets: list[str], **kwargs: Any) -> str:
@@ -42,12 +42,15 @@ class CriticAgent(BaseAgent):
         user = self.get_user_prompt(claim_text, snippets)
         
         try:
-            raw = await self.client.complete(
+            res: CriticOutput = await self.client.complete_json_validated(
                 system_prompt=system,
                 user_prompt=user,
+                response_model=CriticOutput,
                 temperature=0.1,
             )
-            return raw.strip()
+            if not res.criticisms or not res.has_discrepancies:
+                return "No discrepancies identified."
+            return "\n".join(f"- {c}" for c in res.criticisms)
         except Exception as exc:
             self.logger.error("critic_completion_failed", error=str(exc))
             return f"Critique generation failed: {str(exc)}"

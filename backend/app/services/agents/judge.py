@@ -1,5 +1,6 @@
 from typing import Any, Dict, List
 from app.services.agents.base import BaseAgent
+from app.services.agents.schemas import JudgeOutput, GroundedCorrection
 
 class JudgeAgent(BaseAgent):
     """
@@ -18,7 +19,7 @@ class JudgeAgent(BaseAgent):
             "- Explain clearly why the claim was supported, contradicted, or remains unverified based on the evidence.\n"
             "- Explicitly cite the specific files, locations, and concrete code constructs/snippets that serve as proof.\n"
             "- Keep the explanation detailed, writing a comprehensive paragraph that provides solid proof and references.\n"
-            "- Return ONLY valid JSON: {\"explanation\": \"<text>\"}"
+            "- Return ONLY valid JSON matching the requested schema."
         )
 
     def get_user_prompt(self, claim_text: str, verdict: str, evidence_items: List[Dict[str, Any]], **kwargs: Any) -> str:
@@ -52,12 +53,13 @@ class JudgeAgent(BaseAgent):
         user = self.get_user_prompt(claim_text, verdict, evidence_items)
         
         try:
-            res = await self.client.complete_json(
+            res: JudgeOutput = await self.client.complete_json_validated(
                 system_prompt=system,
                 user_prompt=user,
+                response_model=JudgeOutput,
                 temperature=0.1,
             )
-            explanation = res.get("explanation", "").strip()
+            explanation = res.explanation.strip()
             if explanation:
                 return explanation[:1000]
         except Exception as exc:
@@ -65,6 +67,54 @@ class JudgeAgent(BaseAgent):
 
         # Fallback to deterministic template
         return self._template_explanation(verdict, evidence_items)
+
+    async def generate_grounded_correction(
+        self,
+        claim_text: str,
+        verdict: str,
+        evidence_items: List[Dict[str, Any]],
+    ) -> Dict[str, Any] | None:
+        """Synthesize a suggested grounded correction when a claim is contradicted or unverified."""
+        if not evidence_items:
+            return None
+
+        system = (
+            "You are a strict Correction Agent in Varinth, an AI verification swarm.\n"
+            "Your task is to write a Suggested Grounded Correction block based strictly on the matched evidence "
+            "and the contradiction/unverified status of the claim. Do not invent any facts.\n\n"
+            "Identify the correct behavior, path, or setup from the codebase snippets. "
+            "Cite the specific file and line ranges (e.g. ['security.py:L12-L24']). "
+            "Output ONLY valid JSON matching the requested schema."
+        )
+
+        evidence_str = ""
+        parts = []
+        for ev in evidence_items[:5]:
+            parts.append(
+                f"  - File: {ev.get('source_id', 'unknown')}, "
+                f"Location: {ev.get('location', 'unknown')}, "
+                f"Snippet: {ev.get('snippet', '')[:500]}"
+            )
+        evidence_str = "\n".join(parts)
+
+        user = (
+            f"Original Claim: {claim_text}\n"
+            f"Verdict: {verdict}\n"
+            f"Retrieved Codebase Evidence:\n{evidence_str}\n\n"
+            f"Please generate the grounded correction matching the schema precisely."
+        )
+
+        try:
+            res: GroundedCorrection = await self.client.complete_json_validated(
+                system_prompt=system,
+                user_prompt=user,
+                response_model=GroundedCorrection,
+                temperature=0.1,
+            )
+            return res.model_dump()
+        except Exception as exc:
+            self.logger.error("grounded_correction_synthesis_failed", error=str(exc))
+            return None
 
     @staticmethod
     def _template_explanation(

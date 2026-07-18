@@ -24,7 +24,7 @@ _bearer = HTTPBearer()
 # ---------------------------------------------------------------------------
 ALLOWED_EXTENSIONS: frozenset[str] = frozenset({
     ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".rb",
-    ".md", ".txt", ".yaml", ".yml", ".toml", ".env.example",
+    ".yaml", ".yml", ".toml", ".env.example",
     ".json", ".sh", ".dockerfile", ".sql", ".graphql", ".proto",
     ".cfg", ".ini", ".conf",
 })

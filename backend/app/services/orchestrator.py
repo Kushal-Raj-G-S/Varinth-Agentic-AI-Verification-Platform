@@ -75,6 +75,12 @@ class VerificationOrchestrator:
         Returns the structured audit result regardless of partial failures.
         """
         run_start = time.monotonic()
+        
+        # Enforce Fast Mode for local stdio/mcp integrations to minimize latency
+        fast_mode = (client_name == "mcp" or transport_type == "stdio")
+        if fast_mode:
+            max_claims = min(max_claims or 5, 5)
+
         audit_run_id: str | None = None
         warnings: list[dict[str, Any]] = []
         status = "completed"
@@ -106,33 +112,41 @@ class VerificationOrchestrator:
         is_git_repo = False
         temp_dir = None
         
-        # Enforce remote Git Repository URLs strictly (SaaS compliance)
-        if not root_path or not (root_path.startswith("http://") or root_path.startswith("https://") or root_path.startswith("git@")):
-            logger.error("invalid_codebase_source", root_path=root_path)
-            return self._error_response(
-                message="Invalid codebase source. Varinth only supports remote Git Repository URLs (HTTP/HTTPS/SSH) for cloud security compliance.",
-                error="LOCAL_PATHS_NOT_ALLOWED"
-            )
+        # Enforce remote Git Repository URLs strictly for HTTP/external integrations, but allow local paths for stdio (local execution)
+        if transport_type == "stdio":
+            if not root_path or not os.path.isdir(root_path):
+                logger.error("invalid_local_codebase_source", root_path=root_path)
+                return self._error_response(
+                    message="Invalid codebase source. Local directory path does not exist.",
+                    error="LOCAL_PATH_NOT_FOUND"
+                )
+        else:
+            if not root_path or not (root_path.startswith("http://") or root_path.startswith("https://") or root_path.startswith("git@")):
+                logger.error("invalid_codebase_source", root_path=root_path)
+                return self._error_response(
+                    message="Invalid codebase source. Varinth only supports remote Git Repository URLs (HTTP/HTTPS/SSH) for cloud security compliance.",
+                    error="LOCAL_PATHS_NOT_ALLOWED"
+                )
 
-        is_git_repo = True
-        temp_dir = tempfile.mkdtemp(prefix="varinth_clone_")
-        logger.info("cloning_remote_repository", git_url=root_path, temp_dir=temp_dir)
-        try:
-            subprocess.run(
-                ["git", "clone", "--depth", "1", root_path, temp_dir],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            root_path = temp_dir
-            logger.info("cloning_remote_repository_success", temp_dir=temp_dir)
-        except subprocess.CalledProcessError as exc:
-            logger.error("cloning_remote_repository_failed", error=exc.stderr)
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            return self._error_response(
-                message="Failed to clone remote git repository.",
-                error=exc.stderr,
-            )
+            is_git_repo = True
+            temp_dir = tempfile.mkdtemp(prefix="varinth_clone_")
+            logger.info("cloning_remote_repository", git_url=root_path, temp_dir=temp_dir)
+            try:
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", root_path, temp_dir],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                root_path = temp_dir
+                logger.info("cloning_remote_repository_success", temp_dir=temp_dir)
+            except subprocess.CalledProcessError as exc:
+                logger.error("cloning_remote_repository_failed", error=exc.stderr)
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return self._error_response(
+                    message="Failed to clone remote git repository.",
+                    error=exc.stderr,
+                )
 
         try:
             await self._log_event(audit_run_id, "run_started", "input", "Audit run started.")
@@ -259,15 +273,36 @@ class VerificationOrchestrator:
             for claim in claims_raw:
                 claim_index = claim["claim_index"]
                 claim_text = claim["normalized_text"]
-                mem = await self._memory.get_semantic_memory(project_slug, claim_text)
-                if mem:
-                    memory_context[claim_index] = mem
+                try:
+                    mem = await self._memory.get_semantic_memory(project_slug, claim_text)
+                    if mem:
+                        memory_context[claim_index] = mem
+                except Exception as mem_exc:
+                    logger.warning("failed_to_get_memory_context", claim_index=claim_index, error=str(mem_exc))
 
-            verdict_results = await self._swarm.run_swarm(claims_raw, evidence_map, memory_context)
-            await self._log_event(
-                audit_run_id, "verdict_complete", "verdict",
-                f"Swarm verification completed for {len(verdict_results)} claims.",
-            )
+            verdict_results = []
+            try:
+                verdict_results = await self._swarm.run_swarm(claims_raw, evidence_map, memory_context, fast_mode=fast_mode)
+                await self._log_event(
+                    audit_run_id, "verdict_complete", "verdict",
+                    f"Swarm verification completed for {len(verdict_results)} claims.",
+                )
+            except Exception as swarm_exc:
+                logger.error("swarm_verification_failed_using_unverified_fallback", error=str(swarm_exc))
+                warnings.append(self._warning(
+                    "SWARM_PARTIAL_FAILURE",
+                    f"Agent verification swarm failed: {str(swarm_exc)[:200]}. Fallback to unverified.",
+                    "warning",
+                ))
+                status = "partial"
+                for claim in claims_raw:
+                    verdict_results.append({
+                        "claim_index": claim["claim_index"],
+                        "verdict": "unverified",
+                        "confidence": 0.0,
+                        "explanation": "Verification pipeline encountered an unexpected agent swarm error. Defaulting to unverified.",
+                        "rule_trace": {"error": str(swarm_exc)},
+                    })
 
             # ----------------------------------------------------------------
             # STAGE: OUTPUT – compute global score, merge results
@@ -445,19 +480,22 @@ class VerificationOrchestrator:
                 "severity": w["severity"],
             })
 
-        # Execute batch operations concurrently to maximize DB performance
+        # Execute batch operations sequentially to satisfy foreign key constraints:
+        # first insert claims/warnings, then concurrently insert evidence/verdicts.
         async def _run_batch_inserts():
-            tasks = []
             if claims_rows:
-                tasks.append(asyncio.to_thread(self._db.table("claims").insert(claims_rows).execute))
+                await asyncio.to_thread(self._db.table("claims").insert(claims_rows).execute)
+            
+            secondary_tasks = []
             if evidence_rows:
-                tasks.append(asyncio.to_thread(self._db.table("evidence_items").insert(evidence_rows).execute))
+                secondary_tasks.append(asyncio.to_thread(self._db.table("evidence_items").insert(evidence_rows).execute))
             if verdict_rows:
-                tasks.append(asyncio.to_thread(self._db.table("verdict_results").insert(verdict_rows).execute))
+                secondary_tasks.append(asyncio.to_thread(self._db.table("verdict_results").insert(verdict_rows).execute))
             if warning_rows:
-                tasks.append(asyncio.to_thread(self._db.table("audit_warnings").insert(warning_rows).execute))
-            if tasks:
-                await asyncio.gather(*tasks)
+                secondary_tasks.append(asyncio.to_thread(self._db.table("audit_warnings").insert(warning_rows).execute))
+            
+            if secondary_tasks:
+                await asyncio.gather(*secondary_tasks)
 
         await _run_batch_inserts()
 

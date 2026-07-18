@@ -30,6 +30,11 @@ export interface Claim {
     memory_hit?: boolean;
     memory_similarity?: number;
     critic_feedback?: string;
+    suggested_correction?: {
+      statement: string;
+      file_references: string[];
+      confidence: 'strong' | 'tentative';
+    } | null;
   } | null;
 }
 

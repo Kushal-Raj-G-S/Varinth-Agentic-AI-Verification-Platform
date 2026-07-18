@@ -38,7 +38,9 @@ export async function middleware(request: NextRequest) {
                       request.nextUrl.pathname.startsWith('/signup') ||
                       request.nextUrl.pathname.startsWith('/auth')
 
-  if (!user && !isAuthRoute && request.nextUrl.pathname !== '/') {
+  const isPublicRoute = ['/', '/swarm-pipeline', '/integration-hub', '/proof-spec'].includes(request.nextUrl.pathname)
+
+  if (!user && !isAuthRoute && !isPublicRoute) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

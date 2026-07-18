@@ -7,6 +7,11 @@ interface RuleTrace {
   critic_feedback?: string
   memory_hit?: boolean
   memory_similarity?: number
+  suggested_correction?: {
+    statement: string
+    file_references: string[]
+    confidence: 'strong' | 'tentative'
+  } | null
 }
 
 interface EvidenceItem {
@@ -79,6 +84,47 @@ export default function ClaimRow({ claim }: { claim: Claim }) {
               <p className="critic-text" style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>
                 {claim.rule_trace.critic_feedback}
               </p>
+            </div>
+          )}
+
+          {claim.rule_trace?.suggested_correction && (
+            <div className="correction-box" style={{
+              background: 'rgba(255, 179, 0, 0.08)',
+              border: '1px solid rgba(255, 179, 0, 0.25)',
+              borderRadius: '6px',
+              padding: '12px',
+              marginBottom: '12px',
+            }}>
+              <span style={{
+                fontSize: '0.75rem',
+                color: '#f59e0b',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 600,
+                marginBottom: '4px'
+              }}>
+                💡 Suggested Grounded Correction ({claim.rule_trace.suggested_correction.confidence} confidence)
+              </span>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-1)', marginBottom: '8px', lineHeight: 1.4 }}>
+                {claim.rule_trace.suggested_correction.statement}
+              </p>
+              {claim.rule_trace.suggested_correction.file_references && claim.rule_trace.suggested_correction.file_references.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>References:</span>
+                  {claim.rule_trace.suggested_correction.file_references.map((ref, idx) => (
+                    <span key={idx} className="mono" style={{
+                      fontSize: '0.7rem',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      color: 'var(--text-2)'
+                    }}>
+                      {ref}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

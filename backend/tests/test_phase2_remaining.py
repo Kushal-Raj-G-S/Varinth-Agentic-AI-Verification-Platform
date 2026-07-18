@@ -102,5 +102,5 @@ async def test_graph_service():
         claims_out=claims_out
     )
     
-    # Assert upsert node calls were triggered
-    assert graph._db.table.call_count >= 5
+    # Assert upsert batch node/edge calls were triggered
+    assert graph._db.table.call_count >= 2
