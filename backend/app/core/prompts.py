@@ -30,6 +30,7 @@ def claim_extractor_prompt(
         "- Split compound statements into smaller independent claims where they are clearly separable.\n"
         "- Ignore rhetorical filler, style, opinions, and non-verifiable statements.\n"
         "- If a statement cannot be meaningfully audited against code/docs/config, omit it.\n"
+        "- Negation Preservation: Handle negative statements and negations carefully. If the answer states that something is NOT true or is NOT used (e.g., 'not 90 days', 'never touches real user uploads', or 'does not route through 5432'), preserve this negation in the extracted claim (e.g., 'the retention cutoff is not 90 days'). Do NOT invert a negation into a positive claim.\n"
         f"- Extract at most {max_claims} claims.\n"
         "- Allowed claim_type values: structural, config, guarantee, performance, other.\n"
         "- Allowed importance values: low, medium, high, critical.\n"
