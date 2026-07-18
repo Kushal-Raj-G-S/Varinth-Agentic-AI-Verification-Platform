@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     nvidia_embed_model: str = "nvidia/nv-embedqa-e5-v5"
     nvidia_chat_model: str = "meta/llama-3.3-70b-instruct"
 
+    # NemoClaw Blueprint Integration (Private On-Premise)
+    nemoclaw_enabled: bool = False
+    nemoclaw_url: str = "http://localhost:9000/v1"
+    nemoclaw_chat_model: str = "nvidia/nemotron-4-340b-instruct"
+    nemoclaw_embed_model: str = "nvidia/nv-embed-qa"
+
     # CORS
     allowed_origins: str = "http://localhost:3000"
 

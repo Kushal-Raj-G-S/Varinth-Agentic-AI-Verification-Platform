@@ -73,9 +73,15 @@ class LLMClient:
     """
 
     def __init__(self) -> None:
-        self._base_url = settings.nvidia_api_base_url.rstrip("/")
+        if settings.nemoclaw_enabled:
+            self._base_url = settings.nemoclaw_url.rstrip("/")
+            self._chat_model = settings.nemoclaw_chat_model
+            self._embed_model = settings.nemoclaw_embed_model
+        else:
+            self._base_url = settings.nvidia_api_base_url.rstrip("/")
+            self._chat_model = settings.nvidia_chat_model
+            self._embed_model = settings.nvidia_embed_model
         self._api_key = settings.nvidia_api_key
-        self._chat_model = settings.nvidia_chat_model
         self._max_retries = 3
 
     def _headers(self) -> dict[str, str]:
@@ -109,8 +115,9 @@ class LLMClient:
 
         for attempt in range(self._max_retries):
             try:
-                # Acquire token before sending (rate limit enforcement)
-                await asyncio.get_event_loop().run_in_executor(None, _acquire_token)
+                # Acquire token before sending (rate limit enforcement) - skip for local NemoClaw
+                if not settings.nemoclaw_enabled:
+                    await asyncio.get_event_loop().run_in_executor(None, _acquire_token)
 
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     response = await client.post(
@@ -248,7 +255,7 @@ class LLMClient:
         Returns a float vector (e.g. 1024-dimensional for nv-embedqa-e5-v5).
         """
         payload = {
-            "model": settings.nvidia_embed_model,
+            "model": self._embed_model,
             "input": [text],
             "input_type": "query",
             "encoding_format": "float",
@@ -256,7 +263,8 @@ class LLMClient:
 
         for attempt in range(self._max_retries):
             try:
-                await asyncio.get_event_loop().run_in_executor(None, _acquire_token)
+                if not settings.nemoclaw_enabled:
+                    await asyncio.get_event_loop().run_in_executor(None, _acquire_token)
 
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
@@ -290,7 +298,7 @@ class LLMClient:
             return []
 
         payload = {
-            "model": settings.nvidia_embed_model,
+            "model": self._embed_model,
             "input": texts,
             "input_type": input_type,
             "encoding_format": "float",
@@ -298,7 +306,8 @@ class LLMClient:
 
         for attempt in range(self._max_retries):
             try:
-                await asyncio.get_event_loop().run_in_executor(None, _acquire_token)
+                if not settings.nemoclaw_enabled:
+                    await asyncio.get_event_loop().run_in_executor(None, _acquire_token)
 
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
