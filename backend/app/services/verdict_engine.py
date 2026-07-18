@@ -23,7 +23,10 @@ logger = get_logger("varinth.verdict_engine")
 
 # Thresholds
 SUPPORT_THRESHOLD = 0.5      # minimum relevance to count as support
-CONTRADICT_THRESHOLD = 0.3   # minimum relevance to count as contradiction
+CONTRADICT_THRESHOLD = 0.5   # minimum relevance to count as contradiction (raised from 0.3 to match support threshold)
+# Raised from 0.3: a low-relevance snippet labeled contradicts_claim=True by the verifier LLM was
+# producing false-positive contradictions (e.g. main.py router imports flagging a port-routing claim).
+# At 0.5, both support and contradiction require the same quality of evidence.
 
 VALID_VERDICTS = {"supported", "contradicted", "unverified"}
 
@@ -97,10 +100,38 @@ class VerdictEngine:
         ]
 
         # Find contradicting evidence
+        # Keyword sanity check: at least one non-trivial claim keyword must appear literally
+        # in the evidence snippet before we trust a contradiction verdict from the verifier LLM.
+        # This prevents false positives where a semantically adjacent but topically unrelated
+        # snippet is incorrectly labeled contradicts_claim=True (e.g. router imports != port routing).
+        import re as _re
+        _stopwords = {
+            "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+            "have", "has", "had", "do", "does", "did", "will", "would", "could",
+            "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+            "on", "with", "at", "by", "from", "that", "this", "it", "its",
+            "or", "and", "but", "not", "as", "all", "any", "each", "which",
+            "when", "where", "how", "what", "if", "then", "than", "so", "also",
+            "into", "up", "out", "uses", "use", "using", "used", "via", "through",
+            "does", "script", "code", "file", "system", "backend", "app",
+        }
+        _claim_keywords = [
+            w for w in _re.findall(r'[a-zA-Z0-9_:/.\-]{3,}', claim["normalized_text"])
+            if w.lower() not in _stopwords
+        ]
+
+        def _snippet_contains_keyword(snippet: str) -> bool:
+            """Return True if at least one claim keyword appears literally in the snippet."""
+            if not _claim_keywords:
+                return True  # no keywords to check — trust the LLM verdict
+            snippet_lower = snippet.lower()
+            return any(kw.lower() in snippet_lower for kw in _claim_keywords)
+
         contradicting = [
             ev for ev in evidence
             if ev.get("relevance_score", 0) >= CONTRADICT_THRESHOLD
             and ev.get("contradicts_claim") is True
+            and _snippet_contains_keyword(ev.get("snippet", ""))  # sanity gate
         ]
 
         if contradicting:

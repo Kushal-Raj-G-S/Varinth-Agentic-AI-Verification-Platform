@@ -117,7 +117,8 @@ async def test_swarm_orchestrator_grounded_correction_injection():
         mock_validated.side_effect = side_effect_fn
         
         claims = [{"claim_index": 0, "normalized_text": "Uses SQLite", "raw_text": "Uses SQLite", "claim_type": "config"}]
-        evidence_map = {0: [{"source_id": "config.py", "location": "line 10", "snippet": "postgres://db", "relevance_score": 0.9}]}
+        # Snippet must contain 'sqlite' keyword for keyword sanity check to pass
+        evidence_map = {0: [{"source_id": "config.py", "location": "line 10", "snippet": "sqlite = False  # uses postgres instead of sqlite", "relevance_score": 0.9}]}
         
         results = await orchestrator.run_swarm(claims, evidence_map)
         

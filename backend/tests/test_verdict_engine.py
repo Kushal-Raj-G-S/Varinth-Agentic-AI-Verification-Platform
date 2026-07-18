@@ -25,13 +25,15 @@ def test_verdict_supported():
 def test_verdict_contradicted():
     engine = VerdictEngine()
     
-    claims = [{"claim_index": 2, "raw_text": "Claim 2", "normalized_text": "Claim 2", "importance": "high"}]
+    # Use realistic claim/snippet so keyword sanity check passes
+    # The claim mentions 'sqlite' and the snippet contains 'sqlite'
+    claims = [{"claim_index": 2, "raw_text": "Uses sqlite for storage", "normalized_text": "Uses sqlite for storage", "importance": "high"}]
     evidence_map = {
         2: [
             {
                 "source_id": "test.py",
                 "location": "line 12",
-                "snippet": "sqlite = False",
+                "snippet": "sqlite = False  # postgres is used instead",
                 "relevance_score": 0.90,
                 "supports_claim": False,
                 "contradicts_claim": True,
