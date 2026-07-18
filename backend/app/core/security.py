@@ -33,7 +33,8 @@ ALLOWED_EXTENSIONS: frozenset[str] = frozenset({
 EXCLUDED_DIRS: frozenset[str] = frozenset({
     "node_modules", ".git", ".venv", "venv", "__pycache__", ".mypy_cache",
     ".pytest_cache", "dist", "build", ".next", ".nuxt", "coverage",
-    ".tox", "eggs", ".eggs", ".idea", ".vscode",
+    ".tox", "eggs", ".eggs", ".idea", ".vscode", "test_results",
+    "test_results_real", "shadow_results_production", "logs", "out",
 })
 
 # Slug validation pattern
