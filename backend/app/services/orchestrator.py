@@ -111,6 +111,7 @@ class VerificationOrchestrator:
 
         is_git_repo = False
         temp_dir = None
+        should_cleanup = False
         
         # Enforce remote Git Repository URLs strictly for HTTP/external integrations, but allow local paths for stdio (local execution)
         if transport_type == "stdio":
@@ -129,24 +130,74 @@ class VerificationOrchestrator:
                 )
 
             is_git_repo = True
-            temp_dir = tempfile.mkdtemp(prefix="varinth_clone_")
-            logger.info("cloning_remote_repository", git_url=root_path, temp_dir=temp_dir)
-            try:
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", root_path, temp_dir],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-                root_path = temp_dir
-                logger.info("cloning_remote_repository_success", temp_dir=temp_dir)
-            except subprocess.CalledProcessError as exc:
-                logger.error("cloning_remote_repository_failed", error=exc.stderr)
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                return self._error_response(
-                    message="Failed to clone remote git repository.",
-                    error=exc.stderr,
-                )
+            should_cleanup = False
+
+            import urllib.parse
+            parsed_url = urllib.parse.urlparse(root_path)
+            repo_name = parsed_url.path.strip("/").replace("/", "_").replace(".git", "")
+            if not repo_name:
+                repo_name = "default_repo"
+
+            services_dir = os.path.dirname(os.path.realpath(__file__))
+            workspace_root = os.path.realpath(os.path.join(services_dir, "..", "..", ".."))
+            cache_base_dir = os.path.join(workspace_root, "backend", "temp_clone")
+            os.makedirs(cache_base_dir, exist_ok=True)
+            repo_cache_path = os.path.join(cache_base_dir, repo_name)
+            temp_dir = os.path.realpath(repo_cache_path)
+
+            if os.path.isdir(repo_cache_path):
+                logger.info("warm_repository_cache_hit", git_url=root_path, cache_path=temp_dir)
+                try:
+                    subprocess.run(
+                        ["git", "reset", "--hard"],
+                        cwd=temp_dir,
+                        check=True,
+                        capture_output=True,
+                    )
+                    subprocess.run(
+                        ["git", "clean", "-fd"],
+                        cwd=temp_dir,
+                        check=True,
+                        capture_output=True,
+                    )
+                    subprocess.run(
+                        ["git", "pull"],
+                        cwd=temp_dir,
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+                    root_path = temp_dir
+                    logger.info("warm_repository_cache_pull_success", temp_dir=temp_dir)
+                except subprocess.CalledProcessError as exc:
+                    logger.warning("warm_repository_cache_pull_failed_recloning", error=exc.stderr)
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    subprocess.run(
+                        ["git", "clone", "--depth", "1", root_path, temp_dir],
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+                    root_path = temp_dir
+                    logger.info("cloning_remote_repository_success", temp_dir=temp_dir)
+            else:
+                logger.info("warm_repository_cache_miss_cloning", git_url=root_path, cache_path=temp_dir)
+                try:
+                    subprocess.run(
+                        ["git", "clone", "--depth", "1", root_path, temp_dir],
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+                    root_path = temp_dir
+                    logger.info("cloning_remote_repository_success", temp_dir=temp_dir)
+                except subprocess.CalledProcessError as exc:
+                    logger.error("cloning_remote_repository_failed", error=exc.stderr)
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return self._error_response(
+                        message="Failed to clone remote git repository.",
+                        error=exc.stderr,
+                    )
 
         try:
             await self._log_event(audit_run_id, "run_started", "input", "Audit run started.")
@@ -186,6 +237,62 @@ class VerificationOrchestrator:
             # ----------------------------------------------------------------
             # STAGE: EXTRACT
             # ----------------------------------------------------------------
+            # Question-Only Mode synthesis if answer is empty
+            if not answer.strip():
+                await self._log_event(
+                    audit_run_id, "question_only_retrieval_start", "retrieve",
+                    "Question-Only Mode active. Retrieving context for question."
+                )
+                question_candidates = await self._retriever.retrieve(
+                    claim_text=question,
+                    root_path=root_path,
+                    scope_relative_path=scope_relative_path
+                )
+                if not question_candidates:
+                    answer = "No relevant codebase snippets could be retrieved to answer this question."
+                else:
+                    context_blocks = []
+                    for idx, cand in enumerate(question_candidates[:5]):
+                        context_blocks.append(
+                            f"File: {cand.get('source_id') or cand.get('filepath')}\n"
+                            f"Snippet:\n{cand.get('snippet')}"
+                        )
+                    context_str = "\n\n".join(context_blocks)
+                    system_prompt = (
+                        "You are an advanced, professional AI system for Varinth verification. "
+                        "Draft a technical, concise, and highly accurate answer to the user's codebase question. "
+                        "State facts clearly and cite files where appropriate. "
+                        "If the codebase context is insufficient, state exactly what is missing rather than inventing facts."
+                    )
+                    prompt = (
+                        f"User Question: {question}\n\n"
+                        f"Codebase context snippets:\n{context_str}\n\n"
+                        f"Grounded Draft Answer:"
+                    )
+                    try:
+                        from app.services.llm_client import get_llm_client
+                        llm_client = get_llm_client()
+                        draft_answer = await llm_client.chat_complete(
+                            prompt=prompt,
+                            system_prompt=system_prompt
+                        )
+                        answer = draft_answer.strip()
+                    except Exception as e:
+                        logger.error("question_only_synthesis_failed", error=str(e))
+                        answer = f"Failed to synthesize draft answer: {str(e)}"
+
+                await self._log_event(
+                    audit_run_id, "question_only_synthesis_complete", "input",
+                    "Grounded draft answer synthesized.",
+                    {"draft_answer_preview": answer[:100]}
+                )
+                try:
+                    self._db.table("audit_runs").update({
+                        "answer": answer
+                    }).eq("audit_run_id", audit_run_id).execute()
+                except Exception as exc:
+                    logger.error("update_run_answer_failed", error=str(exc))
+
             await self._log_event(audit_run_id, "extract_start", "extract", "Extracting claims.")
             claims_raw, prompt_version, model_status = await self._extractor.extract(
                 question=sanitize_string(question),
@@ -376,7 +483,7 @@ class VerificationOrchestrator:
             warnings.append(self._warning("PIPELINE_ERROR", str(exc)[:500], "error"))
             await self._update_run_status(audit_run_id, "failed")
         finally:
-            if is_git_repo and temp_dir:
+            if is_git_repo and temp_dir and should_cleanup:
                 logger.info("cleaning_up_cloned_repository", temp_dir=temp_dir)
                 shutil.rmtree(temp_dir, ignore_errors=True)
 

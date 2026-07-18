@@ -26,6 +26,9 @@ Security guarantees:
 import os
 import re
 import math
+import sqlite3
+import hashlib
+import json
 from typing import Any
 
 from app.core.config import get_settings
@@ -40,6 +43,48 @@ from app.services.llm_client import LLMUnavailableError, get_llm_client
 
 settings = get_settings()
 logger = get_logger("varinth.retriever")
+
+class EmbeddingCache:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self._init_db()
+
+    def _init_db(self):
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS embeddings (
+                        hash TEXT PRIMARY KEY,
+                        embedding TEXT
+                    )
+                """)
+                conn.commit()
+        except Exception as e:
+            logger.warning("failed_to_initialize_embedding_cache_db", error=str(e))
+
+    def get(self, text: str) -> list[float] | None:
+        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("SELECT embedding FROM embeddings WHERE hash = ?", (text_hash,))
+                row = cursor.fetchone()
+                if row:
+                    return json.loads(row[0])
+        except Exception:
+            pass
+        return None
+
+    def set(self, text: str, embedding: list[float]):
+        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO embeddings (hash, embedding) VALUES (?, ?)",
+                    (text_hash, json.dumps(embedding))
+                )
+                conn.commit()
+        except Exception:
+            pass
 
 MAX_SNIPPET_LINES = 15
 MAX_EVIDENCE_PER_CLAIM = 10
@@ -88,6 +133,11 @@ class EvidenceCandidate:
 class EvidenceRetriever:
     def __init__(self) -> None:
         self._client = get_llm_client()
+        services_dir = os.path.dirname(os.path.realpath(__file__))
+        workspace_root = os.path.realpath(os.path.join(services_dir, "..", "..", ".."))
+        cache_dir = os.path.join(workspace_root, "backend", "temp_clone")
+        os.makedirs(cache_dir, exist_ok=True)
+        self._cache = EmbeddingCache(os.path.join(cache_dir, "embeddings_cache.db"))
 
     async def retrieve(
         self,
@@ -291,14 +341,35 @@ class EvidenceRetriever:
         Falls back to keyword score if embedding fails.
         """
         try:
-            claim_embedding = await self._client.embed(claim_text)
+            claim_embedding = self._cache.get(claim_text)
+            if not claim_embedding:
+                claim_embedding = await self._client.embed(claim_text)
+                self._cache.set(claim_text, claim_embedding)
 
-            # Embed up to 30 candidates in a single batch call
+            # Embed up to 30 candidates in a single batch call with cache checks
             candidates_to_embed = candidates[:30]
-            snippets = [c.snippet[:512] for c in candidates_to_embed]
-            snippet_embeddings = await self._client.embed_batch(
-                snippets, input_type="passage"
-            )
+            uncached_candidates = []
+            uncached_snippets = []
+            snippet_embeddings_map = {}
+
+            for idx, c in enumerate(candidates_to_embed):
+                snippet_text = c.snippet[:512]
+                cached_emb = self._cache.get(snippet_text)
+                if cached_emb:
+                    snippet_embeddings_map[idx] = cached_emb
+                else:
+                    uncached_candidates.append(idx)
+                    uncached_snippets.append(snippet_text)
+
+            if uncached_snippets:
+                new_embeddings = await self._client.embed_batch(
+                    uncached_snippets, input_type="passage"
+                )
+                for idx, emb in zip(uncached_candidates, new_embeddings):
+                    snippet_embeddings_map[idx] = emb
+                    self._cache.set(candidates_to_embed[idx].snippet[:512], emb)
+
+            snippet_embeddings = [snippet_embeddings_map[idx] for idx in range(len(candidates_to_embed))]
 
             scored: list[tuple[float, EvidenceCandidate]] = []
             for candidate, snippet_embedding in zip(candidates_to_embed, snippet_embeddings):

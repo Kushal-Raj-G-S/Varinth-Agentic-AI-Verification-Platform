@@ -60,7 +60,7 @@ class SourceScopeResponse(BaseModel):
 
 class AuditRunCreate(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
-    answer: str = Field(..., min_length=1, max_length=10000)
+    answer: str = Field("", max_length=10000)
     context_slug: str | None = Field(None, pattern=r'^[a-z0-9_-]{1,64}$')
     scope_slug: str | None = Field(None, pattern=r'^[a-z0-9_-]{1,64}$')
     max_claims: int | None = Field(None, ge=1, le=30)
@@ -69,6 +69,8 @@ class AuditRunCreate(BaseModel):
     @field_validator("question", "answer")
     @classmethod
     def sanitize(cls, v: str) -> str:
+        if v is None:
+            return ""
         return sanitize_string(v)
 
 

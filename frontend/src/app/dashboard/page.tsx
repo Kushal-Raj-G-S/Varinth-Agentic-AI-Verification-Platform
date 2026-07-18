@@ -346,12 +346,11 @@ export default function DashboardPage() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <label style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>AI-generated answer to verify</label>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>AI-generated answer to verify (optional)</label>
                 <textarea
-                  placeholder="Paste the AI response statement here — Varinth will isolate claims and verify..."
+                  placeholder="Paste the AI response here — or leave blank to run Question-Only Mode (which automatically generates a grounded draft answer from your codebase first)..."
                   value={answer}
                   onChange={e => setAnswer(e.target.value)}
-                  required
                   style={{
                     background: '#040409',
                     border: '1px solid rgba(255,255,255,0.08)',
