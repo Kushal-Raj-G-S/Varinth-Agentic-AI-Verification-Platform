@@ -161,10 +161,12 @@ export default function LoginPage() {
       {/* Logo top-left */}
       <Link href="/" style={{
         position: 'absolute', top: 28, left: 36, zIndex: 10,
+        display: 'flex', alignItems: 'center', gap: '10px',
         fontFamily: 'var(--font-display)', fontSize: '1.2rem',
         letterSpacing: '-0.05em', color: '#f9f5ff', textDecoration: 'none',
       }}>
-        Varinth<span style={{ color: 'rgba(255,130,90,0.3)' }}>.engine</span>
+        <img src="/logo.png" alt="Varinth Logo" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+        <span>Varinth<span style={{ color: 'rgba(255,130,90,0.3)' }}>.engine</span></span>
       </Link>
 
       {/* Left Column: Visual Swarm telemetry status board */}

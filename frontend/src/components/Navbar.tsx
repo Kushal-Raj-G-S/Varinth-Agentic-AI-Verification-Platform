@@ -31,13 +31,17 @@ export default function Navbar({ email }: { email?: string }) {
       gap: 'var(--s8)',
     }}>
       <Link href="/dashboard" style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
         fontFamily: 'var(--font-display)',
         fontSize: '1.25rem',
         letterSpacing: '-0.04em',
         color: 'var(--text-1)',
         textDecoration: 'none',
       }}>
-        Varinth<span style={{ color: 'var(--text-3)' }}>.engine</span>
+        <img src="/logo.png" alt="Varinth Logo" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+        <span>Varinth<span style={{ color: 'var(--text-3)' }}>.engine</span></span>
       </Link>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
