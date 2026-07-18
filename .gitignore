@@ -104,3 +104,10 @@ backend/.env
 frontend/.env
 *.pem
 *.key
+
+# Varinth Documentation (kept local, untracked on Git)
+[0-9][0-9]-varinth-*.md
+varinth_proof_spec.md
+varinth_state_dump.md
+15_phase2.md
+14-tech-stack.md
