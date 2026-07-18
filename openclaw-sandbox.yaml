@@ -1,0 +1,24 @@
+# openclaw-sandbox.yaml
+# Varinth NemoClaw Security Policies
+
+version: "1.0"
+
+policies:
+  file_system:
+    read:
+      - "backend/app/**"
+      - "frontend/src/**"
+      - "schema.sql"
+      - "phase2_schema.sql"
+    write:
+      - "backend/temp_clone/**"
+    deny:
+      - ".git/**"
+      - "backend/.env"
+      - "node_modules/**"
+      - "venv/**"
+      - ".venv/**"
+  network:
+    allow:
+      - "https://integrate.api.nvidia.com/**"
+      - "https://*.supabase.co/**"

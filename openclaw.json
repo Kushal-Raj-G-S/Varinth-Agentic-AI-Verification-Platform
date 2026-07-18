@@ -1,0 +1,37 @@
+{
+  "env": {
+    "NVIDIA_API_KEY": "${NVIDIA_API_KEY}"
+  },
+  "models": {
+    "providers": {
+      "nvidia": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "api": "openai-completions"
+      }
+    }
+  },
+  "agents": {
+    "critic": {
+      "model": {
+        "primary": "meta/llama-3.3-70b-instruct"
+      },
+      "systemPrompt": "You are the Varinth Critic agent. Analyze claims against retrieved codebase evidence and identify structural discrepancies or gaps."
+    },
+    "verifier": {
+      "model": {
+        "primary": "meta/llama-3.3-70b-instruct"
+      },
+      "systemPrompt": "You are the Varinth Verifier agent. Review individual evidence snippets and output structured supports_claim / contradicts_claim classifications."
+    },
+    "judge": {
+      "model": {
+        "primary": "meta/llama-3.3-70b-instruct"
+      },
+      "systemPrompt": "You are the Varinth Judge agent. Synthesize final claim verdicts and construct grounded codebase correction statements."
+    }
+  },
+  "sandbox": {
+    "enabled": true,
+    "policy": "openclaw-sandbox.yaml"
+  }
+}
