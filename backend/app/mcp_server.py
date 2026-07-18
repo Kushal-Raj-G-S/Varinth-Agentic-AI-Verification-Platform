@@ -77,7 +77,11 @@ VERIFY_TOOL_SCHEMA = {
         },
         "answer": {
             "type": "string",
-            "description": "The AI-generated answer to audit. Max 10000 characters.",
+            "description": (
+                "Optional. The AI-generated answer to audit. Max 10000 characters. "
+                "If omitted, Varinth enters Question-Only mode: it retrieves codebase "
+                "context, drafts a grounded answer, and verifies it automatically."
+            ),
             "maxLength": 10000,
         },
         "root_path": {
@@ -108,7 +112,7 @@ VERIFY_TOOL_SCHEMA = {
             "description": "Optional identifier for the AI answer being audited (e.g. conversation ID).",
         },
     },
-    "required": ["question", "answer", "root_path"],
+    "required": ["question", "root_path"],
 }
 
 COMPARE_TOOL_SCHEMA = {
@@ -201,8 +205,7 @@ async def _handle_verify(args: dict) -> CallToolResult:
 
         if not question:
             return _error_result("'question' is required and cannot be empty.")
-        if not answer:
-            return _error_result("'answer' is required and cannot be empty.")
+        # answer is optional — empty string triggers Question-Only mode in orchestrator
         if not root_path:
             return _error_result("'root_path' is required and cannot be empty.")
         if not os.path.isdir(root_path):
