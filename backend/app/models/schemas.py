@@ -1,6 +1,7 @@
 """
 Pydantic request/response models for all Varinth API endpoints.
 """
+import re
 from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
@@ -65,6 +66,35 @@ class AuditRunCreate(BaseModel):
     scope_slug: str | None = Field(None, pattern=r'^[a-z0-9_-]{1,64}$')
     max_claims: int | None = Field(None, ge=1, le=30)
     answer_id: str | None = None
+    ref: str | None = Field(
+        None,
+        max_length=256,
+        description=(
+            "Optional git ref (branch, tag, or commit SHA) to check out "
+            "before auditing, instead of the context's default branch. "
+            "Used by CI integrations (e.g. the GitHub Action) to audit a "
+            "pull request's actual head commit rather than the base branch."
+        ),
+    )
+
+    @field_validator("ref")
+    @classmethod
+    def validate_ref(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        # `ref` is passed as a subprocess argument to `git fetch origin <ref>`.
+        # A value starting with "-" could be interpreted by git as an option
+        # (e.g. "--upload-pack=...") rather than a refspec — a known
+        # argument-injection vector — so reject anything that isn't a plain
+        # branch/tag/SHA-shaped token.
+        if not re.match(r'^[A-Za-z0-9][A-Za-z0-9_./-]{0,255}$', v) or ".." in v:
+            raise ValueError(
+                "Invalid ref. Must be a plain branch name, tag, or commit SHA."
+            )
+        return v
 
     @field_validator("question", "answer")
     @classmethod
@@ -143,6 +173,35 @@ class AuditRunSummary(BaseModel):
     started_at: str
     completed_at: str | None
     duration_ms: int | None = None
+
+
+# ---------------------------------------------------------------------------
+# API Keys — for headless/CI callers (e.g. the GitHub Action integration)
+# ---------------------------------------------------------------------------
+
+class ApiKeyCreate(BaseModel):
+    label: str = Field(..., min_length=1, max_length=128)
+
+    @field_validator("label")
+    @classmethod
+    def sanitize_label(cls, v: str) -> str:
+        return sanitize_string(v.strip())[:128]
+
+
+class ApiKeyCreateResponse(BaseModel):
+    api_key_id: str
+    label: str
+    key_prefix: str
+    api_key: str  # the raw key — shown exactly once, never persisted
+    created_at: str
+
+
+class ApiKeyResponse(BaseModel):
+    api_key_id: str
+    label: str
+    key_prefix: str
+    created_at: str
+    last_used_at: str | None = None
 
 
 # ---------------------------------------------------------------------------

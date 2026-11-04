@@ -1,0 +1,66 @@
+name: Varinth PR Audit
+
+# Audits this PR's title + description against the actual code at its head
+# commit, using a Varinth backend, and posts the result as a PR comment.
+#
+# Setup (any repo that wants this, including this one):
+#   1. Run a Varinth backend (see docker-compose.yml) and sign in to it.
+#   2. Create an API key: Varinth dashboard -> Settings -> API Keys.
+#   3. In this repo's Settings -> Secrets and variables -> Actions, add:
+#        VARINTH_API_URL   e.g. https://your-varinth-host
+#        VARINTH_API_KEY   the key from step 2
+#   4. Copy this file into .github/workflows/ in the target repo.
+#
+# Until both secrets are set, every run of this workflow no-ops (the guard
+# step below) instead of failing the PR's checks.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Varinth secrets are configured
+        id: guard
+        run: |
+          if [ -z "${{ secrets.VARINTH_API_URL }}" ] || [ -z "${{ secrets.VARINTH_API_KEY }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::VARINTH_API_URL / VARINTH_API_KEY not set — skipping Varinth PR audit."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Pulls the audit script from the canonical Varinth repo, not from
+      # whatever repo this workflow file has been copied into — so this
+      # same workflow file works unmodified in any repo that adopts it.
+      - name: Checkout Varinth audit script
+        if: steps.guard.outputs.configured == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Kushal-Raj-G-S/Varinth-Agentic-AI-Verification-Platform
+          ref: main
+          sparse-checkout: |
+            integrations/github-action/varinth_pr_audit.py
+          sparse-checkout-cone-mode: false
+          path: .varinth-action
+
+      - name: Set up Python
+        if: steps.guard.outputs.configured == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Varinth audit
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VARINTH_API_URL: ${{ secrets.VARINTH_API_URL }}
+          VARINTH_API_KEY: ${{ secrets.VARINTH_API_KEY }}
+          VARINTH_FAIL_ON_CONTRADICTION: ${{ vars.VARINTH_FAIL_ON_CONTRADICTION || 'false' }}
+        run: python3 .varinth-action/integrations/github-action/varinth_pr_audit.py

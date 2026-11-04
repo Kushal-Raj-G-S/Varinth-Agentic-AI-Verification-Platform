@@ -4,9 +4,13 @@ security.py
 Path traversal protection, JWT verification, input sanitization.
 Every public-facing concern that touches security lives here.
 """
+import hashlib
 import os
 import re
+import secrets
 import unicodedata
+from datetime import datetime, timezone
+
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -121,9 +125,84 @@ def is_excluded_dir(dir_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 class UserClaims:
-    def __init__(self, user_id: str, email: str | None = None):
+    def __init__(self, user_id: str, email: str | None = None, auth_method: str = "jwt"):
         self.user_id = user_id
         self.email = email
+        self.auth_method = auth_method  # "jwt" | "api_key" — informational, for logging
+
+
+# ---------------------------------------------------------------------------
+# API keys — for headless/CI callers (e.g. the GitHub Action integration)
+# that can't do an interactive Supabase login. The raw key is shown to the
+# user exactly once, at creation time; only its SHA-256 hash is ever stored
+# or compared against.
+# ---------------------------------------------------------------------------
+
+API_KEY_PREFIX = "vrth_"
+_API_KEY_RANDOM_BYTES = 32  # 256 bits of entropy
+
+
+def generate_api_key() -> tuple[str, str, str]:
+    """
+    Generate a new API key.
+    Returns (full_key, key_prefix, key_hash) — full_key must be shown to the
+    caller immediately and never persisted; key_prefix and key_hash are what
+    get stored in the `api_keys` table.
+    """
+    full_key = API_KEY_PREFIX + secrets.token_urlsafe(_API_KEY_RANDOM_BYTES)
+    key_prefix = full_key[: len(API_KEY_PREFIX) + 8]
+    key_hash = hash_api_key(full_key)
+    return full_key, key_prefix, key_hash
+
+
+def hash_api_key(raw_key: str) -> str:
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+
+def is_api_key(token: str) -> bool:
+    return token.startswith(API_KEY_PREFIX)
+
+
+def verify_api_key(raw_key: str) -> UserClaims:
+    """
+    Look up a raw API key by its hash and return the owning user's claims.
+    Raises 401 if the key is unknown, malformed, or revoked.
+    """
+    from app.core.database import get_supabase
+
+    key_hash = hash_api_key(raw_key)
+    try:
+        client = get_supabase()
+        result = (
+            client.table("api_keys")
+            .select("api_key_id,user_id,revoked_at")
+            .eq("key_hash", key_hash)
+            .execute()
+        )
+    except Exception as exc:
+        logger.error("api_key_lookup_failed", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    if not result.data or result.data[0].get("revoked_at"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or revoked API key.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    row = result.data[0]
+    try:
+        client.table("api_keys").update(
+            {"last_used_at": datetime.now(timezone.utc).isoformat()}
+        ).eq("api_key_id", row["api_key_id"]).execute()
+    except Exception:
+        pass  # last_used_at is best-effort telemetry, never blocks auth
+
+    return UserClaims(user_id=str(row["user_id"]), email=None, auth_method="api_key")
 
 
 def verify_supabase_jwt(token: str) -> UserClaims:
@@ -159,10 +238,17 @@ async def require_authenticated_user(
 ) -> UserClaims:
     """
     FastAPI dependency. Inject into any route that requires authentication.
+    Accepts either a Supabase-issued JWT (interactive users, the frontend)
+    or a Varinth API key prefixed "vrth_" (headless/CI callers, e.g. the
+    GitHub Action). Both resolve to the same UserClaims shape, so existing
+    routes need no changes to support either.
 
     Usage:
         @router.get("/protected")
         async def handler(user: UserClaims = Depends(require_authenticated_user)):
             ...
     """
-    return verify_supabase_jwt(credentials.credentials)
+    token = credentials.credentials
+    if is_api_key(token):
+        return verify_api_key(token)
+    return verify_supabase_jwt(token)

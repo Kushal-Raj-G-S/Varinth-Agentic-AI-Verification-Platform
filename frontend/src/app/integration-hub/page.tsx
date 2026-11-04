@@ -55,72 +55,74 @@ function HoverGlowCard({ children, style = {}, accent = '#ff6b45', ...props }: a
 const INTEGRATION_SECTIONS = [
   {
     id: "getting-started",
-    label: "CLI Installation",
+    label: "REST API",
     category: "GUIDES",
-    title: "Verify assertions in seconds",
-    desc: "Connect Varinth directly to your codebase. It doesn't write code or guess answers; it reads code, resolves references, and checks logic with mathematical proofs.",
-    codeBlock: "npm install -g @varinth/cli\nvarinth verify --claim \"JWT tokens expire in 30 days\" --dir ./src",
+    title: "Audit an answer in one request",
+    desc: "Call the Varinth HTTP API directly. It extracts claims, searches your codebase for evidence, and returns a verdict per claim — no CLI or SDK install required.",
+    codeBlock: "curl -X POST http://localhost:8000/api/v1/audits \\\n  -H \"Authorization: Bearer $VARINTH_API_KEY\"",
     content: (
       <div>
-        <h3 style={{ fontSize: '1rem', color: '#ff6b45', marginBottom: 12, fontFamily: 'var(--font-mono)' }}>1. Install the CLI Globally</h3>
-        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>The command line interface handles parsing, connects directly to Supabase authentication, and runs local audits.</p>
+        <h3 style={{ fontSize: '1rem', color: '#ff6b45', marginBottom: 12, fontFamily: 'var(--font-mono)' }}>1. Register a source context once</h3>
+        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>Point Varinth at a git repository it should search for evidence (see <code>POST /api/v1/contexts</code>).</p>
         <pre style={{ background: '#040409', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)', marginBottom: 24 }}>
-          <code>npm install -g @varinth/cli</code>
+          <code>{`curl -X POST http://localhost:8000/api/v1/contexts \\
+  -H "Authorization: Bearer $VARINTH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "My Repo",
+    "slug": "my-repo",
+    "root_path": "https://github.com/you/your-repo.git"
+  }'`}</code>
         </pre>
 
-        <h3 style={{ fontSize: '1rem', color: '#ff6b45', marginBottom: 12, fontFamily: 'var(--font-mono)' }}>2. Execute Code Verification</h3>
-        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>Run an audit passing the target claim statement, codebase directories, and custom rule configurations.</p>
+        <h3 style={{ fontSize: '1rem', color: '#ff6b45', marginBottom: 12, fontFamily: 'var(--font-mono)' }}>2. Submit the audit</h3>
+        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>Pass the question that was asked, the AI's answer, and which registered context to check it against.</p>
         <pre style={{ background: '#040409', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)', marginBottom: 24 }}>
-          <code>varinth verify --claim "JWT tokens expire in 30 days" --dir ./backend/src --rules .varinth/rules.json --verbose</code>
+          <code>{`curl -X POST http://localhost:8000/api/v1/audits \\
+  -H "Authorization: Bearer $VARINTH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "question": "How long do JWT sessions last?",
+    "answer": "JWT tokens expire after 30 days.",
+    "context_slug": "my-repo",
+    "max_claims": 10
+  }'`}</code>
         </pre>
 
-        <h3 style={{ fontSize: '1rem', color: '#ff6b45', marginBottom: 12, fontFamily: 'var(--font-mono)' }}>CLI Parameters reference</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', background: '#040409', padding: 16, borderRadius: 6 }}>
-          <div><code>--claim [string]</code> : The exact statement or assertion to test.</div>
-          <div><code>--dir [path]</code> : Relative directory path containing target source code files.</div>
-          <div><code>--rules [path]</code> : Optional custom JSON file containing AST heuristics and severity boundaries.</div>
-          <div><code>--verbose</code> : Emits full compiler warnings and step telemetry logs directly to console.</div>
-        </div>
+        <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)' }}>
+          $VARINTH_API_KEY comes from <a href="/settings" style={{ color: '#ff6b45' }}>Settings → API Keys</a>. The response includes a verdict, confidence, and cited file/line evidence for each extracted claim.
+        </p>
       </div>
     )
   },
   {
-    id: "swarm-rules",
-    label: "Swarm Rules Spec",
+    id: "verdict-rules",
+    label: "Verdict Rules",
     category: "GUIDES",
-    title: "Define AST Verification Rules",
-    desc: "Create custom verification rules in your workspace configuration file. Varinth's agents parse these rules and test code strictly against them.",
-    codeBlock: "{\n  \"rules\": [\n    {\n      \"id\": \"jwt-expiry-max\",\n      \"name\": \"Maximum JWT Expiry Limit\"\n    }\n  ]\n}",
+    title: "How a verdict is actually decided",
+    desc: "Verdicts are never decided by an LLM — a deterministic rule engine assigns them from scored, LLM-annotated evidence, so every verdict is auditable and reproducible.",
+    codeBlock: "SUPPORT_THRESHOLD = 0.5\nCONTRADICT_THRESHOLD = 0.5",
     content: (
       <div>
-        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>Define validation constraints in <code>.varinth/rules.json</code> at your project root:</p>
-        <pre style={{ background: '#040409', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)', height: 280, overflowY: 'auto' }}>
-          <code>{`{
-  "rules": [
-    {
-      "id": "jwt-expiry-max",
-      "name": "Maximum JWT Expiry Limit",
-      "severity": "error",
-      "files": ["**/auth/*.py", "**/tokens.py"],
-      "constraint": "JWT expiry must not exceed 7 days (604800 seconds) in configuration files."
-    },
-    {
-      "id": "parameterized-queries",
-      "name": "SQL Injection Prevention",
-      "severity": "critical",
-      "files": ["**/db/**/*.py"],
-      "constraint": "All database execute commands must use query parameters, not string formatting."
-    },
-    {
-      "id": "csrf-protection",
-      "name": "Cross-Site Request Forgery Guard",
-      "severity": "error",
-      "files": ["**/app/main.py", "**/middleware.py"],
-      "constraint": "Middlewares must include CSRF tokens matching config keys."
-    }
-  ]
-}`}</code>
+        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>
+          The Critic and Verifier agents annotate each evidence snippet with a relevance score and <code>supports_claim</code> / <code>contradicts_claim</code> flags. From there, a plain Python rule engine — not an LLM — decides the verdict:
+        </p>
+        <pre style={{ background: '#040409', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)', height: 220, overflowY: 'auto' }}>
+          <code>{`supported    — at least one evidence item with
+               relevance_score >= 0.5 AND supports_claim
+
+contradicted — at least one evidence item with
+               relevance_score >= 0.5 AND contradicts_claim,
+               AND a literal claim keyword appears in the
+               snippet (guards against false-positive
+               contradictions from topically adjacent code)
+
+unverified   — everything else (no evidence, or evidence
+               too weak to clear either threshold)`}</code>
         </pre>
+        <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: 16 }}>
+          A hard invariant in the engine makes it impossible to emit <code>supported</code> with zero attached evidence — that path raises rather than silently passing.
+        </p>
       </div>
     )
   },
@@ -129,20 +131,22 @@ const INTEGRATION_SECTIONS = [
     label: "Claude Desktop",
     category: "INTEGRATIONS",
     title: "Varinth inside Claude Desktop",
-    desc: "Run Varinth natively as a Model Context Protocol (MCP) server inside Claude Desktop.",
-    codeBlock: "{\n  \"mcpServers\": {\n    \"varinth\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@varinth/mcp-server\"],\n      \"env\": {\n        \"VARINTH_API_KEY\": \"vt_live_abcdef123456\"\n      }\n    }\n  }\n}",
+    desc: "Run Varinth natively as a Model Context Protocol (MCP) server inside Claude Desktop — the varinth_verify and varinth_compare tools run locally over stdio.",
+    codeBlock: "{\n  \"mcpServers\": {\n    \"varinth\": {\n      \"command\": \"python\",\n      \"args\": [\"-m\", \"app.mcp_server\"]\n    }\n  }\n}",
     content: (
       <div>
-        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>Add the Varinth server to your Claude Desktop configuration file (<code>claude_desktop_config.json</code>):</p>
+        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>Add the Varinth server to your Claude Desktop configuration file (<code>claude_desktop_config.json</code>). It runs your own local clone of <code>backend/</code> — there's no hosted MCP endpoint:</p>
         <pre style={{ background: '#040409', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)', marginBottom: 24 }}>
           <code>{`{
   "mcpServers": {
     "varinth": {
-      "command": "npx",
-      "args": ["-y", "@varinth/mcp-server"],
+      "command": "python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "/absolute/path/to/varinth/backend",
       "env": {
-        "VARINTH_API_KEY": "vt_live_abcdef123456",
-        "VARINTH_WORKSPACE_DIR": "./workspace"
+        "SUPABASE_URL": "...",
+        "SUPABASE_SERVICE_ROLE_KEY": "...",
+        "NVIDIA_API_KEY": "..."
       }
     }
   }
@@ -150,7 +154,7 @@ const INTEGRATION_SECTIONS = [
         </pre>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'rgba(0,220,184,0.05)', border: '1px solid rgba(0,220,184,0.15)', borderRadius: 6 }}>
           <span style={{ fontSize: '0.78rem', color: '#00dcb8', fontWeight: 600 }}>Protip:</span>
-          <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>Once loaded, simply ask Claude: \"Check if my token authentication duration is set correctly.\"</span>
+          <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>Full template with every env var: <code>mcp_settings.example.json</code> at the repo root. Once loaded, ask Claude: "Verify that session TTL is 24 hours against ./my-project."</span>
         </div>
       </div>
     )
@@ -160,19 +164,21 @@ const INTEGRATION_SECTIONS = [
     label: "Cursor IDE",
     category: "INTEGRATIONS",
     title: "Varinth inside Cursor Composer",
-    desc: "Enable Varinth inside Cursor to audit codebases contextually in Composer view.",
-    codeBlock: "npx -y @varinth/mcp-server --port 3020",
+    desc: "The same MCP server works in Cursor — it isn't a Claude Desktop-only protocol.",
+    codeBlock: "python -m app.mcp_server",
     content: (
       <div>
-        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>Register Varinth in Cursor under Settings &gt; Features &gt; MCP &gt; Add New MCP Server:</p>
+        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>Register Varinth in Cursor under Settings &gt; Features &gt; MCP &gt; Add New MCP Server, using a stdio command (not a port) — same as the Claude Desktop config:</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 16, background: '#040409', border: '1px solid rgba(255,255,255,0.04)', padding: 12, borderRadius: 6, fontSize: '0.78rem' }}>
             <span style={{ color: 'rgba(255,255,255,0.4)' }}>Name:</span>
-            <span style={{ color: '#fff', fontWeight: 600 }}>varinth-engine</span>
+            <span style={{ color: '#fff', fontWeight: 600 }}>varinth</span>
             <span style={{ color: 'rgba(255,255,255,0.4)' }}>Type:</span>
             <span style={{ color: '#fff', fontFamily: 'var(--font-mono)' }}>command</span>
             <span style={{ color: 'rgba(255,255,255,0.4)' }}>Command:</span>
-            <span style={{ color: '#ff6b45', fontFamily: 'var(--font-mono)' }}>npx -y @varinth/mcp-server --port 3020</span>
+            <span style={{ color: '#ff6b45', fontFamily: 'var(--font-mono)' }}>python -m app.mcp_server</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>Working dir:</span>
+            <span style={{ color: '#fff', fontFamily: 'var(--font-mono)' }}>/absolute/path/to/varinth/backend</span>
           </div>
         </div>
       </div>
@@ -182,58 +188,86 @@ const INTEGRATION_SECTIONS = [
     id: "github-actions",
     label: "GitHub Actions",
     category: "INTEGRATIONS",
-    title: "Automate verification in GitHub PRs",
-    desc: "Verify claims automatically in every GitHub branch check and fail build steps on logic contradictions.",
-    codeBlock: "uses: varinth/actions-audit@v2",
+    title: "Varinth audits every pull request",
+    desc: "Audits a PR's title and description against the real code at its head commit, and posts the verdict as a PR comment — updated in place on every push, no separate dashboard required.",
+    codeBlock: "python3 varinth_pr_audit.py",
     content: (
       <div>
-        <pre style={{ background: '#040409', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)' }}>
-          <code>{`name: Varinth Verification
+        <h3 style={{ fontSize: '1rem', color: '#ff6b45', marginBottom: 12, fontFamily: 'var(--font-mono)' }}>1. Generate an API key</h3>
+        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>
+          From <a href="/settings" style={{ color: '#ff6b45' }}>Settings → API Keys</a>, create a key for CI use — it's shown once, so copy it immediately.
+        </p>
+
+        <h3 style={{ fontSize: '1rem', color: '#ff6b45', marginBottom: 12, fontFamily: 'var(--font-mono)' }}>2. Add two repository secrets</h3>
+        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>
+          In the target repo's <code>Settings → Secrets and variables → Actions</code>: <code>VARINTH_API_URL</code> (your backend's base URL) and <code>VARINTH_API_KEY</code> (the key from step 1).
+        </p>
+
+        <h3 style={{ fontSize: '1rem', color: '#ff6b45', marginBottom: 12, fontFamily: 'var(--font-mono)' }}>3. Copy the workflow file</h3>
+        <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>
+          This is the actual workflow Varinth ships and runs on itself — copy it as-is into <code>.github/workflows/</code>. It fetches the audit script fresh from Varinth's repo on every run, so there's nothing else to install.
+        </p>
+        <pre style={{ background: '#040409', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)', marginBottom: 24, overflowX: 'auto' }}>
+          <code>{`name: Varinth PR Audit
 on:
   pull_request:
-    branches: [ main, dev ]
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  pull-requests: write
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-      - name: Setup Node Environment
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
         with:
-          node-version: 20
-      - name: Run Varinth Swarm Audit
-        uses: varinth/actions-audit@v2
+          repository: Kushal-Raj-G-S/Varinth-Agentic-AI-Verification-Platform
+          sparse-checkout: integrations/github-action/varinth_pr_audit.py
+          sparse-checkout-cone-mode: false
+          path: .varinth-action
+      - uses: actions/setup-python@v5
         with:
-          api-key: \${{ secrets.VARINTH_API_KEY }}
-          claim: "Session TTL is 24 hours"
-          dir: "./src"
-          fail-on-contradict: true`}</code>
+          python-version: "3.11"
+      - run: python3 .varinth-action/integrations/github-action/varinth_pr_audit.py
+        env:
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          VARINTH_API_URL: \${{ secrets.VARINTH_API_URL }}
+          VARINTH_API_KEY: \${{ secrets.VARINTH_API_KEY }}`}</code>
         </pre>
+
+        <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)' }}>
+          Full setup, private-repo notes, and the <code>VARINTH_FAIL_ON_CONTRADICTION</code> switch to block merges on a contradicted claim: see{' '}
+          <a href="https://github.com/Kushal-Raj-G-S/Varinth-Agentic-AI-Verification-Platform/tree/main/integrations/github-action" target="_blank" rel="noreferrer" style={{ color: '#ff6b45' }}>
+            integrations/github-action/README.md
+          </a>.
+        </p>
       </div>
     )
   },
   {
     id: "rest-api",
-    label: "REST SDK Reference",
+    label: "Auditing a PR commit",
     category: "INTEGRATIONS",
-    title: "Trigger Swarms programmatically",
-    desc: "Call the Varinth HTTP REST API to audit custom scopes asynchronously.",
-    codeBlock: "curl -X POST https://api.varinth.com/v2/audits \\\n  -H \"Authorization: Bearer vt_live_abcdef123456\"",
+    title: "Pin an audit to a specific commit",
+    desc: "Pass a ref alongside context_slug to check a claim against a branch, tag, or commit SHA instead of the context's default branch — what the GitHub Action uses to audit a PR's actual head commit.",
+    codeBlock: "curl -X POST http://localhost:8000/api/v1/audits \\\n  -d '{ ..., \"ref\": \"a1b2c3d\" }'",
     content: (
       <div>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: '#10b981', border: '1px solid rgba(16,185,129,0.22)', padding: '2px 6px', borderRadius: 3, background: 'rgba(16,185,129,0.06)', display: 'inline-block', marginBottom: 12 }}>POST /v2/audits</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: '#10b981', border: '1px solid rgba(16,185,129,0.22)', padding: '2px 6px', borderRadius: 3, background: 'rgba(16,185,129,0.06)', display: 'inline-block', marginBottom: 12 }}>POST /api/v1/audits</span>
         <pre style={{ background: '#040409', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)', marginBottom: 24 }}>
-          <code>{`curl -X POST https://api.varinth.com/v2/audits \\
-  -H "Authorization: Bearer vt_live_abcdef123456" \\
+          <code>{`curl -X POST http://localhost:8000/api/v1/audits \\
+  -H "Authorization: Bearer $VARINTH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "repository_url": "https://github.com/user/project",
-    "branch": "main",
-    "claim": "Rate limiting applied at API gateway",
+    "question": "Does this PR add rate limiting to login?",
+    "answer": "Yes — 10 requests/min per user via check_rate_limit.",
+    "context_slug": "my-repo",
+    "ref": "a1b2c3d4e5f6",
     "max_claims": 10
   }'`}</code>
         </pre>
+        <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)' }}>
+          This is exactly how the "GitHub Actions" integration (see the sidebar) audits a pull request against its real diff instead of whatever's already on <code>main</code>.
+        </p>
       </div>
     )
   }

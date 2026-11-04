@@ -129,20 +129,27 @@ class GitCheckoutError(Exception):
         self.safe_detail = safe_detail
 
 
-def _sync_checkout_git_repo(git_url: str, cache_base_dir: str) -> str:
+def _sync_checkout_git_repo(git_url: str, cache_base_dir: str, ref: str | None = None) -> str:
     """
     Synchronous — MUST be called via asyncio.to_thread with a wrapping
     timeout. Shells out to git and blocks the calling thread.
 
     Uses an OS-level advisory lock (fcntl.flock on Unix, msvcrt.locking on Windows)
-    on a lock file scoped to this repo's cache directory, so concurrent checkouts of 
-    the SAME repo — whether from concurrent asyncio tasks in this process or from 
+    on a lock file scoped to this repo's cache directory, so concurrent checkouts of
+    the SAME repo — whether from concurrent asyncio tasks in this process or from
     separate worker processes — serialize instead of racing destructive git commands
     against an in-flight read.
 
     The cache directory name includes a hash of the full URL (host + path),
     not just the path, so two different remotes that happen to share a path
     component never collide on disk.
+
+    `ref` (already validated upstream — see AuditRunCreate.validate_ref —
+    to rule out option-injection via subprocess) pins the checkout to a
+    specific branch/tag/commit instead of the remote's default branch, e.g.
+    to audit a pull request's actual head commit. Concurrent audits against
+    the same repo URL but different refs still serialize on the same lock,
+    which is consistent with this cache being one worktree per repo URL.
     """
     os.makedirs(cache_base_dir, exist_ok=True)
 
@@ -158,7 +165,7 @@ def _sync_checkout_git_repo(git_url: str, cache_base_dir: str) -> str:
         with open(lock_path, "w") as lock_file:
             fcntl.flock(lock_file, fcntl.LOCK_EX)
             try:
-                return _perform_git_ops(git_url, repo_cache_path)
+                return _perform_git_ops(git_url, repo_cache_path, ref)
             finally:
                 fcntl.flock(lock_file, fcntl.LOCK_UN)
     elif msvcrt:
@@ -167,7 +174,7 @@ def _sync_checkout_git_repo(git_url: str, cache_base_dir: str) -> str:
         try:
             lock_file.seek(0)
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-            return _perform_git_ops(git_url, repo_cache_path)
+            return _perform_git_ops(git_url, repo_cache_path, ref)
         finally:
             try:
                 lock_file.seek(0)
@@ -177,10 +184,10 @@ def _sync_checkout_git_repo(git_url: str, cache_base_dir: str) -> str:
             lock_file.close()
     else:
         # Fallback to no-lock if neither module is available (rare)
-        return _perform_git_ops(git_url, repo_cache_path)
+        return _perform_git_ops(git_url, repo_cache_path, ref)
 
 
-def _perform_git_ops(git_url: str, repo_cache_path: str) -> str:
+def _perform_git_ops(git_url: str, repo_cache_path: str, ref: str | None = None) -> str:
     """Helper function to perform actual git operations once lock is acquired."""
     if os.path.isdir(repo_cache_path):
         try:
@@ -199,12 +206,18 @@ def _perform_git_ops(git_url: str, repo_cache_path: str) -> str:
                 cwd=repo_cache_path, check=True, capture_output=True,
                 text=True, timeout=GIT_PULL_TIMEOUT_SECONDS,
             )
+            _checkout_ref_if_given(repo_cache_path, ref)
             return repo_cache_path
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             # Cache is in an unknown/bad state — drop it and fall
             # through to a fresh clone below, but this fallback is
             # itself fully guarded.
             shutil.rmtree(repo_cache_path, ignore_errors=True)
+        except GitCheckoutError:
+            # ref checkout failed on an otherwise-good cache — don't
+            # nuke a perfectly good clone just because the requested ref
+            # didn't resolve; let the error propagate.
+            raise
 
     try:
         subprocess.run(
@@ -212,6 +225,7 @@ def _perform_git_ops(git_url: str, repo_cache_path: str) -> str:
             check=True, capture_output=True, text=True,
             timeout=GIT_CLONE_TIMEOUT_SECONDS,
         )
+        _checkout_ref_if_given(repo_cache_path, ref)
         return repo_cache_path
     except subprocess.TimeoutExpired as exc:
         shutil.rmtree(repo_cache_path, ignore_errors=True)
@@ -223,6 +237,41 @@ def _perform_git_ops(git_url: str, repo_cache_path: str) -> str:
         shutil.rmtree(repo_cache_path, ignore_errors=True)
         raise GitCheckoutError(
             "Failed to clone remote git repository.",
+            safe_detail=_sanitize_error_text(exc.stderr or str(exc)),
+        ) from exc
+    except GitCheckoutError:
+        shutil.rmtree(repo_cache_path, ignore_errors=True)
+        raise
+
+
+def _checkout_ref_if_given(repo_cache_path: str, ref: str | None) -> None:
+    """
+    Fetch and check out a specific ref (branch, tag, or commit SHA) on top
+    of an already-cloned/updated repo_cache_path. No-op if ref is None —
+    the repo is left on whatever the prior clone/pull/reset left it on
+    (the remote's default branch).
+    """
+    if not ref:
+        return
+    try:
+        subprocess.run(
+            ["git", "fetch", "--depth", "1", "origin", ref],
+            cwd=repo_cache_path, check=True, capture_output=True,
+            text=True, timeout=GIT_PULL_TIMEOUT_SECONDS,
+        )
+        subprocess.run(
+            ["git", "checkout", "--force", "FETCH_HEAD"],
+            cwd=repo_cache_path, check=True, capture_output=True,
+            text=True, timeout=GIT_PULL_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitCheckoutError(
+            f"Timed out checking out ref '{ref}'.",
+            safe_detail=_sanitize_error_text(str(exc)),
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise GitCheckoutError(
+            f"Failed to check out ref '{ref}'. It may not exist on the remote.",
             safe_detail=_sanitize_error_text(exc.stderr or str(exc)),
         ) from exc
 
@@ -252,6 +301,7 @@ class VerificationOrchestrator:
         answer_id: str | None = None,
         client_name: str | None = None,
         transport_type: str | None = None,
+        ref: str | None = None,
     ) -> dict[str, Any]:
         """
         Run the full verification pipeline for one audit.
@@ -330,7 +380,7 @@ class VerificationOrchestrator:
             try:
                 logger.info("git_checkout_start", git_url=redacted_url)
                 local_root_path = await asyncio.wait_for(
-                    asyncio.to_thread(_sync_checkout_git_repo, root_path, cache_base_dir),
+                    asyncio.to_thread(_sync_checkout_git_repo, root_path, cache_base_dir, ref),
                     timeout=GIT_CLONE_TIMEOUT_SECONDS + 15,
                 )
                 root_path = local_root_path

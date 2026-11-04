@@ -57,6 +57,12 @@ export default function Navbar({ email }: { email?: string }) {
         >
           Sources
         </Link>
+        <Link
+          href="/settings"
+          className={`nav-link ${pathname.startsWith('/settings') ? 'active' : ''}`}
+        >
+          Settings
+        </Link>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
