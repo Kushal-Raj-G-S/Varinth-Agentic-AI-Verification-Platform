@@ -91,6 +91,53 @@ MAX_EVIDENCE_PER_CLAIM = 10
 SNIPPET_CONTEXT_LINES = 3     # lines of context around a match
 EMBED_BATCH_CHUNK_SIZE = 2     # see note at the embed_batch call site
 
+# ---------------------------------------------------------------------------
+# Comment-bias correction
+# ---------------------------------------------------------------------------
+# Both scoring stages systematically over-rank comments/docstrings/YAML setup
+# prose over actual logic: a claim like "the contradiction threshold is 0.5"
+# shares far more literal words with a comment that says "...contradiction
+# threshold...0.5..." in English than with the code line
+# `CONTRADICT_THRESHOLD = 0.5` itself (keyword density), and the same gap
+# shows up in semantic similarity (claim text is natural language; a comment
+# IS natural language, code mostly isn't). Observed in practice: a workflow
+# YAML's setup-instructions comments outranking the actual verdict_engine.py
+# logic they were describing. This doesn't try to detect every comment style
+# perfectly (e.g. Python triple-quoted docstrings aren't line-prefixed) — it
+# targets the dominant, observed failure mode: line-prefixed comments
+# (#, //, --) crowding out business logic.
+COMMENT_PREFIXES: dict[str, tuple[str, ...]] = {
+    ".py": ("#",), ".rb": ("#",), ".sh": ("#",),
+    ".yaml": ("#",), ".yml": ("#",), ".toml": ("#",),
+    ".cfg": ("#", ";"), ".ini": ("#", ";"), ".conf": ("#",),
+    ".dockerfile": ("#",), ".graphql": ("#",),
+    ".ts": ("//",), ".tsx": ("//",), ".js": ("//",), ".jsx": ("//",),
+    ".go": ("//",), ".rs": ("//",), ".java": ("//",), ".proto": ("//",),
+    ".sql": ("--",),
+}
+# How much to discount a fully-comment snippet's score (0 = no penalty,
+# 1 = zero out entirely). Partial-comment snippets scale linearly between.
+COMMENT_PENALTY_STRENGTH = 0.65
+
+
+def _comment_line_ratio(snippet: str, filepath: str) -> float:
+    """
+    Fraction of non-blank lines in `snippet` that are comment-only lines,
+    by the file extension's line-comment prefix(es). Returns 0.0 for
+    extensions with no known line-comment syntax (e.g. .json).
+    """
+    _, ext = os.path.splitext(filepath.lower())
+    prefixes = COMMENT_PREFIXES.get(ext)
+    if not prefixes:
+        return 0.0
+
+    lines = [ln.strip() for ln in snippet.splitlines() if ln.strip()]
+    if not lines:
+        return 0.0
+
+    comment_lines = sum(1 for ln in lines if ln.startswith(prefixes))
+    return comment_lines / len(lines)
+
 
 class RetrievalScopeViolation(Exception):
     pass
@@ -108,12 +155,18 @@ class EvidenceCandidate:
         snippet: str,
         relevance_score: float = 0.0,
         retrieval_rank: int = 0,
+        comment_penalty: float = 1.0,
     ):
         self.source_id = source_id
         self.location = location
         self.snippet = snippet
         self.relevance_score = relevance_score
         self.retrieval_rank = retrieval_rank
+        # Multiplier (<=1.0) applied to relevance_score in both scoring
+        # stages — see COMMENT_PENALTY_STRENGTH. Computed once at
+        # construction since it depends only on the snippet's own text,
+        # not on which claim is being scored against it.
+        self.comment_penalty = comment_penalty
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -321,12 +374,17 @@ class EvidenceRetriever:
             ) / max(len(keywords), 1)
             score = min(score / 3.0, 1.0)  # normalize roughly
 
+            comment_ratio = _comment_line_ratio(snippet, filepath)
+            comment_penalty = 1.0 - (COMMENT_PENALTY_STRENGTH * comment_ratio)
+            score *= comment_penalty
+
             location = f"line {start + 1}–{end}"
             candidates.append(EvidenceCandidate(
                 source_id=relative_path,
                 location=location,
                 snippet=snippet[:1500],  # cap snippet length
                 relevance_score=score,
+                comment_penalty=comment_penalty,
             ))
 
         return candidates
@@ -417,6 +475,15 @@ class EvidenceRetriever:
                         continue
                     if token in candidate.snippet:
                         candidate.relevance_score = min(candidate.relevance_score + 0.15, 1.0)
+
+            # Re-apply the comment penalty as the final step — semantic
+            # similarity just overwrote relevance_score above, and the
+            # token-match boost can fire on comment text just as easily as
+            # on real code (a comment describing a token contains that
+            # token too), so this has to be the last adjustment, not baked
+            # into the embedding score itself.
+            for candidate in candidates_to_embed:
+                candidate.relevance_score *= candidate.comment_penalty
 
             # Sort by boosted relevance score descending
             scored.sort(key=lambda x: x[1].relevance_score, reverse=True)

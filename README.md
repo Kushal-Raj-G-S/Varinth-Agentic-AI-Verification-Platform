@@ -33,7 +33,23 @@
   <a href="#-database-schema">Database</a>
 </p>
 
+<p align="center">
+  <a href="https://varinth-agentic-ai-verification-pla.vercel.app">🌐 Live App</a> •
+  <a href="https://varinth-agentic-ai-verification-platform.onrender.com/api/v1/health">⚙️ Backend Health</a>
+</p>
+
 </div>
+
+---
+
+## 🌐 Live Demo
+
+| Layer | URL | Hosting |
+|---|---|---|
+| Frontend | [varinth-agentic-ai-verification-pla.vercel.app](https://varinth-agentic-ai-verification-pla.vercel.app) | Vercel |
+| Backend API | [varinth-agentic-ai-verification-platform.onrender.com](https://varinth-agentic-ai-verification-platform.onrender.com) | Render (Docker, free tier) |
+
+> Backend runs on Render's free tier — it cold-starts after ~15 minutes of inactivity, so the first request after idle can take 30–60s to spin up.
 
 ---
 
