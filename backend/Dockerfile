@@ -28,4 +28,9 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form (not exec-array form) so $PORT actually gets substituted —
+# Render, Railway, and most PaaS hosts assign a dynamic port via this env
+# var and health-check against it; a hardcoded port here fails the deploy.
+# Falls back to 8000 for plain `docker run` / docker-compose, where PORT
+# isn't set.
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
