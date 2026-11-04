@@ -30,7 +30,7 @@ The IDE requires the Varinth stdio server to be registered in its global configu
       "args": ["-m", "app.mcp_server"],
       "cwd": "e:/BMSIT/Personal Ai projects/1 Internship-Resume Projects/9_Varinth/backend",
       "env": {
-        "SUPABASE_URL": "https://nkonhxpkcprvtlbvbrjo.supabase.co",
+        "SUPABASE_URL": "https://zadvmwnahccvbtlappqk.supabase.co",
         "SUPABASE_ANON_KEY": "your_supabase_anon_key",
         "SUPABASE_SERVICE_ROLE_KEY": "your_supabase_service_role_key",
         "NVIDIA_API_KEY": "your_nvidia_api_key",
