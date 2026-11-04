@@ -208,6 +208,20 @@ async def submit_audit(
         ref=payload.ref,
     )
 
+    # The orchestrator can fail before an audit_runs row ever exists (e.g.
+    # the INSERT itself fails), in which case result["audit_run_id"] is
+    # None. Querying with a None id previously fell through to Supabase as
+    # the literal string "null", which Postgres rejects as invalid UUID
+    # syntax — an unhandled 500 that buried whatever the real failure was.
+    if not result.get("audit_run_id"):
+        failure_message = "Failed to start audit run."
+        if result.get("warnings"):
+            failure_message = result["warnings"][0].get("message", failure_message)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=failure_message,
+        )
+
     run_result = (
         db.table("audit_runs")
         .select("*")

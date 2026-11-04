@@ -137,7 +137,13 @@ CREATE TABLE audit_runs (
   source_context_id     UUID                 REFERENCES source_contexts(source_context_id) ON DELETE SET NULL,
   source_scope_id       UUID                 REFERENCES source_scopes(source_scope_id) ON DELETE SET NULL,
   question              TEXT                 NOT NULL CHECK (char_length(question) > 0 AND char_length(question) <= 2000),
-  answer                TEXT                 NOT NULL CHECK (char_length(answer) > 0 AND char_length(answer) <= 10000),
+  -- Empty string is a valid, meaningful value here, not an oversight:
+  -- it's how Question-Only Mode is triggered (orchestrator.py drafts
+  -- and persists a grounded answer after this row is created). A
+  -- lower-bound length check here would make that mode impossible to
+  -- even start — the very first insert would fail before the
+  -- orchestrator ever got a chance to run.
+  answer                TEXT                 NOT NULL CHECK (char_length(answer) <= 10000),
   answer_id             TEXT,
   requested_max_claims  INTEGER              CHECK (requested_max_claims > 0 AND requested_max_claims <= 30),
   global_score          DECIMAL(4,3)         CHECK (global_score >= 0 AND global_score <= 1),

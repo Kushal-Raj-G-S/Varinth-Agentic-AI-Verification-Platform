@@ -23,7 +23,6 @@ Security guarantees:
   - Max file size: configurable (default 512KB)
   - Max files scanned per run: configurable (default 500)
 """
-import asyncio
 import os
 import re
 import math
@@ -376,14 +375,25 @@ class EvidenceRetriever:
                 # input_type). Chunking trades a few more requests for
                 # actually getting semantic re-ranking instead of silently
                 # falling back to keyword-only scoring on every claim.
+                #
+                # These chunks run SEQUENTIALLY, not via asyncio.gather —
+                # firing them all concurrently (across potentially several
+                # claims being retrieved concurrently at once) flooded the
+                # shared LLM token bucket and caused
+                # "LLM token bucket timeout" failures that didn't exist
+                # before this chunking was introduced. Sequential chunks
+                # per claim, combined with the orchestrator's own
+                # claim-level concurrency, keeps total in-flight requests
+                # bounded instead of fanning out multiplicatively.
                 chunks = [
                     uncached_snippets[i:i + EMBED_BATCH_CHUNK_SIZE]
                     for i in range(0, len(uncached_snippets), EMBED_BATCH_CHUNK_SIZE)
                 ]
-                chunk_results = await asyncio.gather(
-                    *(self._client.embed_batch(chunk, input_type="passage") for chunk in chunks)
-                )
-                new_embeddings = [emb for chunk in chunk_results for emb in chunk]
+                new_embeddings: list[list[float]] = []
+                for chunk in chunks:
+                    new_embeddings.extend(
+                        await self._client.embed_batch(chunk, input_type="passage")
+                    )
                 for idx, emb in zip(uncached_candidates, new_embeddings):
                     snippet_embeddings_map[idx] = emb
                     self._cache.set(candidates_to_embed[idx].snippet[:512], emb)
