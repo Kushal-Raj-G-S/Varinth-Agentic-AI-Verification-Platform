@@ -14,7 +14,7 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({
   counts,
 }) => {
   const hasScore = globalScore !== null;
-  const score = hasScore ? Math.round(globalScore) : 0;
+  const score = hasScore ? Math.round(globalScore * 100) : 0;
 
   // Determine colors based on themes
   const strokeColor = !hasScore

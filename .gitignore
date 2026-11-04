@@ -100,6 +100,10 @@ temp_clone/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Machine-local npm cache path (set when the default cache drive is full) —
+# never portable across machines, never commit.
+.npmrc
 backend/.env
 frontend/.env
 *.pem

@@ -293,7 +293,7 @@ export default function AuditDetailsPage() {
     fetchAuditData(true);
   };
 
-  const score = audit.global_score !== null ? Math.round(audit.global_score) : null;
+  const score = audit.global_score !== null ? Math.round(audit.global_score * 100) : null;
   const scoreColor = score === null ? 'var(--text-3)' : score >= 80 ? 'var(--teal)' : score >= 50 ? 'var(--amber)' : 'var(--crimson)';
   const radius = 22;
   const circumference = 2 * Math.PI * radius;

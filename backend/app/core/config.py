@@ -9,10 +9,17 @@ class Settings(BaseSettings):
     supabase_service_role_key: str
 
     # NVIDIA API
+    # NOTE: both defaults were updated 2026-11-04 after the previous models
+    # (nvidia/nv-embedqa-e5-v5, meta/llama-3.3-70b-instruct) returned HTTP 410
+    # Gone — NVIDIA retired them. docker-compose.yml never sets these two env
+    # vars, so it relies entirely on these class defaults; verify any model
+    # change here against https://integrate.api.nvidia.com/v1/models before
+    # deploying, since NVIDIA's catalog availability varies per account/key,
+    # not just by model name.
     nvidia_api_key: str
     nvidia_api_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_embed_model: str = "nvidia/nv-embedqa-e5-v5"
-    nvidia_chat_model: str = "meta/llama-3.3-70b-instruct"
+    nvidia_embed_model: str = "nvidia/nemotron-3.5-embed-1b"
+    nvidia_chat_model: str = "nvidia/nemotron-3.5-bolt-e4b"
 
     # NemoClaw Blueprint Integration (Private On-Premise)
     nemoclaw_enabled: bool = False

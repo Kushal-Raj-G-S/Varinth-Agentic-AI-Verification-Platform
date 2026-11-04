@@ -23,6 +23,7 @@ Security guarantees:
   - Max file size: configurable (default 512KB)
   - Max files scanned per run: configurable (default 500)
 """
+import asyncio
 import os
 import re
 import math
@@ -89,6 +90,7 @@ class EmbeddingCache:
 MAX_SNIPPET_LINES = 15
 MAX_EVIDENCE_PER_CLAIM = 10
 SNIPPET_CONTEXT_LINES = 3     # lines of context around a match
+EMBED_BATCH_CHUNK_SIZE = 2     # see note at the embed_batch call site
 
 
 class RetrievalScopeViolation(Exception):
@@ -366,9 +368,22 @@ class EvidenceRetriever:
                     uncached_snippets.append(snippet_text)
 
             if uncached_snippets:
-                new_embeddings = await self._client.embed_batch(
-                    uncached_snippets, input_type="passage"
+                # NVIDIA's embedding endpoint is empirically unreliable on
+                # this model above ~2 inputs per request — batches larger
+                # than that intermittently return 500 "service inference
+                # failed" (confirmed 2026-11-04: batch_size=1-2 consistently
+                # OK, batch_size>=5 consistently failed, independent of
+                # input_type). Chunking trades a few more requests for
+                # actually getting semantic re-ranking instead of silently
+                # falling back to keyword-only scoring on every claim.
+                chunks = [
+                    uncached_snippets[i:i + EMBED_BATCH_CHUNK_SIZE]
+                    for i in range(0, len(uncached_snippets), EMBED_BATCH_CHUNK_SIZE)
+                ]
+                chunk_results = await asyncio.gather(
+                    *(self._client.embed_batch(chunk, input_type="passage") for chunk in chunks)
                 )
+                new_embeddings = [emb for chunk in chunk_results for emb in chunk]
                 for idx, emb in zip(uncached_candidates, new_embeddings):
                     snippet_embeddings_map[idx] = emb
                     self._cache.set(candidates_to_embed[idx].snippet[:512], emb)
