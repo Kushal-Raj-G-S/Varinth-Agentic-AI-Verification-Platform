@@ -6,6 +6,12 @@ from app.services.llm_client import get_llm_client
 
 logger = get_logger("varinth.memory")
 
+# Cap on how many historical memories are pulled and scored (in Python) per
+# claim lookup. Without this, the query and the similarity scan both grow
+# unbounded with the project's full claim history.
+MAX_MEMORY_CANDIDATES = 500
+
+
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
     if len(a) != len(b):
         return 0.0
@@ -38,7 +44,18 @@ class MemoryService:
         try:
             claim_emb = await self._client.embed(claim_text)
 
-            res = self._db.table("memories").select("*").eq("project_slug", project_slug).execute()
+            # Bounded to the most recent N memories for this project — an
+            # unbounded scan here grows linearly with every verified claim
+            # ever recorded for the project and re-fetches/re-scores all of
+            # it, in Python, on every single claim of every future audit.
+            res = (
+                self._db.table("memories")
+                .select("*")
+                .eq("project_slug", project_slug)
+                .order("created_at", desc=True)
+                .limit(MAX_MEMORY_CANDIDATES)
+                .execute()
+            )
             candidates = res.data or []
 
             best_match = None

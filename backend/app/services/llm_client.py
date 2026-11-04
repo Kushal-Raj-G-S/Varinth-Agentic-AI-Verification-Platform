@@ -289,6 +289,8 @@ class LLMClient:
                 )
                 await asyncio.sleep(_backoff_seconds(attempt))
 
+        raise LLMUnavailableError("Embedding API unavailable after retries.")
+
     async def embed_batch(self, texts: list[str], input_type: str = "query") -> list[list[float]]:
         """
         Generate text embeddings in batch using the NVIDIA embedding model.

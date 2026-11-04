@@ -29,16 +29,21 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
   // Protect all routes except auth routes, static assets, and api check
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||
                       request.nextUrl.pathname.startsWith('/signup') ||
                       request.nextUrl.pathname.startsWith('/auth')
 
   const isPublicRoute = ['/', '/swarm-pipeline', '/integration-hub', '/proof-spec'].includes(request.nextUrl.pathname)
+
+  let user = null
+
+  try {
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    user = currentUser
+  } catch {
+    user = null
+  }
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     return NextResponse.redirect(new URL('/login', request.url))

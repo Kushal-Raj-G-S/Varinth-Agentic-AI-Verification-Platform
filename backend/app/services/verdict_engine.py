@@ -7,14 +7,17 @@ No LLM in the verdict loop — verdicts are deterministic and auditable.
 Verdict rules:
   supported    — at least 1 evidence item with relevance_score >= 0.5
                  AND supports_claim is True
-  contradicted — at least 1 evidence item with relevance_score >= 0.3
-                 AND contradicts_claim is True
+  contradicted — at least 1 evidence item with relevance_score >= 0.5
+                 AND contradicts_claim is True, AND at least one literal
+                 claim keyword appears in the snippet (see
+                 _snippet_contains_keyword below)
   unverified   — all other cases (no evidence, or evidence too weak)
 
 Integrity guarantee:
   A 'supported' verdict without any attached evidence raises
   VerdictIntegrityError — this is a hard invariant.
 """
+import re
 from typing import Any
 
 from app.core.logging import get_logger
@@ -29,6 +32,19 @@ CONTRADICT_THRESHOLD = 0.5   # minimum relevance to count as contradiction (rais
 # At 0.5, both support and contradiction require the same quality of evidence.
 
 VALID_VERDICTS = {"supported", "contradicted", "unverified"}
+
+# Keyword sanity-check stopwords for the contradiction gate below. Module
+# level so it isn't rebuilt on every single claim verdict.
+_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+    "on", "with", "at", "by", "from", "that", "this", "it", "its",
+    "or", "and", "but", "not", "as", "all", "any", "each", "which",
+    "when", "where", "how", "what", "if", "then", "than", "so", "also",
+    "into", "up", "out", "uses", "use", "using", "used", "via", "through",
+    "does", "script", "code", "file", "system", "backend", "app",
+}
 
 
 class VerdictIntegrityError(Exception):
@@ -104,20 +120,9 @@ class VerdictEngine:
         # in the evidence snippet before we trust a contradiction verdict from the verifier LLM.
         # This prevents false positives where a semantically adjacent but topically unrelated
         # snippet is incorrectly labeled contradicts_claim=True (e.g. router imports != port routing).
-        import re as _re
-        _stopwords = {
-            "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-            "have", "has", "had", "do", "does", "did", "will", "would", "could",
-            "should", "may", "might", "shall", "can", "to", "of", "in", "for",
-            "on", "with", "at", "by", "from", "that", "this", "it", "its",
-            "or", "and", "but", "not", "as", "all", "any", "each", "which",
-            "when", "where", "how", "what", "if", "then", "than", "so", "also",
-            "into", "up", "out", "uses", "use", "using", "used", "via", "through",
-            "does", "script", "code", "file", "system", "backend", "app",
-        }
         _claim_keywords = [
-            w for w in _re.findall(r'[a-zA-Z0-9_:/.\-]{3,}', claim["normalized_text"])
-            if w.lower() not in _stopwords
+            w for w in re.findall(r'[a-zA-Z0-9_:/.\-]{3,}', claim["normalized_text"])
+            if w.lower() not in _STOPWORDS
         ]
 
         def _snippet_contains_keyword(snippet: str) -> bool:

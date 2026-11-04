@@ -57,7 +57,8 @@ async def test_memory_service():
         ]
         
         memory._db.table = MagicMock()
-        memory._db.table.return_value.select.return_value.eq.return_value.execute = MagicMock(return_value=mock_execute)
+        chain = memory._db.table.return_value.select.return_value.eq.return_value
+        chain.order.return_value.limit.return_value.execute = MagicMock(return_value=mock_execute)
         
         hit = await memory.get_semantic_memory(
             project_slug="test-proj",

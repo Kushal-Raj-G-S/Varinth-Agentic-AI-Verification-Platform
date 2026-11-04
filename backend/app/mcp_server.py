@@ -205,31 +205,14 @@ async def _handle_verify(args: dict) -> CallToolResult:
 
         if not question:
             return _error_result("'question' is required and cannot be empty.")
-        
-        # Dynamically extract and override root_path if answer contains absolute file paths to a different project
-        if answer:
-            import re
-            paths = re.findall(r'(?:file:///|(?:\b|^))([A-Za-z]:[\\/][^"\r\n\t>)\s]+)', answer)
-            for p in paths:
-                clean_path = p.replace("%20", " ").strip().rstrip(").")
-                if os.path.exists(clean_path):
-                    curr = os.path.dirname(clean_path) if os.path.isfile(clean_path) else clean_path
-                    matched_root = None
-                    for _ in range(5):
-                        if not curr or len(curr) <= 4:
-                            break
-                        if (
-                            os.path.isdir(os.path.join(curr, ".git"))
-                            or os.path.isdir(os.path.join(curr, "backend"))
-                            or os.path.isdir(os.path.join(curr, "frontend"))
-                        ):
-                            matched_root = curr.replace("\\", "/")
-                            break
-                        curr = os.path.dirname(curr)
-                    if matched_root and os.path.isdir(matched_root):
-                        logger.info("mcp_dynamic_root_path_override", original=root_path, overridden=matched_root)
-                        root_path = matched_root
-                        break
+
+        # NOTE: root_path must come only from the caller's explicit argument.
+        # A previous version of this handler scanned `answer` (untrusted,
+        # possibly LLM-generated text being audited) for absolute paths and
+        # silently redirected root_path to whatever directory it found —
+        # bypassing the tool's documented guarantee that it will never
+        # access a path outside the caller-supplied root. That override has
+        # been removed; root_path is trusted input only.
 
         # answer is optional — empty string triggers Question-Only mode in orchestrator
         if not root_path:

@@ -205,6 +205,7 @@ async def submit_audit(
         answer_id=payload.answer_id,
         client_name="http",
         transport_type="http",
+        ref=payload.ref,
     )
 
     run_result = (
@@ -257,16 +258,25 @@ async def list_audits(
         .execute()
     )
 
-    # Add claim_count via a separate query per run (simple approach for v1)
-    summaries = []
-    for run in result.data:
-        count_result = (
+    # Add claim_count for all returned runs in a single query instead of one
+    # query per run (previously N+1: a page of 100 runs issued 100 extra
+    # round trips to the DB just to count claims).
+    run_ids = [run["audit_run_id"] for run in result.data]
+    claim_counts: dict[str, int] = {}
+    if run_ids:
+        claims_result = (
             db.table("claims")
-            .select("claim_id", count="exact")
-            .eq("audit_run_id", run["audit_run_id"])
+            .select("audit_run_id")
+            .in_("audit_run_id", run_ids)
             .execute()
         )
-        run["claim_count"] = count_result.count or 0
+        for row in claims_result.data:
+            rid = row["audit_run_id"]
+            claim_counts[rid] = claim_counts.get(rid, 0) + 1
+
+    summaries = []
+    for run in result.data:
+        run["claim_count"] = claim_counts.get(run["audit_run_id"], 0)
         summaries.append(run)
 
     return summaries
